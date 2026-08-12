@@ -1,0 +1,93 @@
+name: Daily ASSL
+
+on:
+  schedule:
+    - cron: "17 22 * * 0-4"
+  workflow_dispatch:
+    inputs:
+      as_of:
+        description: "Optional completed A-share session (YYYY-MM-DD)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: assl-daily
+  cancel-in-progress: false
+
+jobs:
+  screen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      ASSL_DATABASE_URL: ${{ secrets.ASSL_DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -e ".[dev]"
+      - name: Run private screening
+        shell: bash
+        run: |
+          args=()
+          if [ -n "${{ inputs.as_of }}" ]; then args+=(--as-of "${{ inputs.as_of }}"); fi
+          assl run-daily "${args[@]}"
+      - name: Export privacy-checked public data
+        run: python scripts/export_public.py public-data
+      - uses: actions/upload-artifact@v4
+        with:
+          name: assl-public-data
+          path: public-data/
+          if-no-files-found: error
+          retention-days: 14
+
+  build-pages:
+    needs: screen
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e ".[dev]"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: assl-public-data
+          path: public-data
+      - name: Build privacy-safe site
+        shell: bash
+        run: |
+          rm -rf web/public/data/fixture
+          mkdir -p web/public/data
+          cp -R public-data/. web/public/data/
+          cd web
+          npm ci
+          npm run test:run
+          npm run build
+      - run: python -m assl.publish.privacy web/dist
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist
+
+  deploy:
+    needs: build-pages
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
