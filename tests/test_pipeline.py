@@ -56,6 +56,30 @@ def test_low_coverage_fails_without_signal_persistence(monkeypatch):
     assert summary.coverage.covered_count == 97
 
 
+def test_failed_low_coverage_run_can_retry_after_missing_bars_arrive(monkeypatch):
+    members = _members(100)
+    bars = {member.instrument.symbol: _bars(member.instrument.symbol) for member in members[:97]}
+    repository = FakeRepository(members, bars)
+    market = FakeMarket(_batch({}))
+    monkeypatch.setattr(pipeline_module, "classify_stock", _classify)
+    pipeline = DailyPipeline(repository, market, AlgorithmConfig.macd_v1())
+
+    first = pipeline.run(date(2026, 8, 11))
+    market.batch = _batch(
+        {
+            member.instrument.symbol: _bars(member.instrument.symbol)
+            for member in members[97:]
+        }
+    )
+    second = pipeline.run(date(2026, 8, 11))
+
+    assert first.status == "failed"
+    assert second.status == "succeeded"
+    assert second.run_id == first.run_id
+    assert market.calls == 2
+    assert repository.run_count == 1
+
+
 def test_offline_run_never_calls_market(monkeypatch):
     members = _members(2)
     bars = {member.instrument.symbol: _bars(member.instrument.symbol) for member in members}

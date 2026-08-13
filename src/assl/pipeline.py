@@ -88,7 +88,7 @@ class DailyPipeline:
                     connection,
                     RunKey(preliminary_date, version.id, self.config.version),
                 )
-                if existing is not None:
+                if existing is not None and existing.status != "failed":
                     return existing
 
             source_timestamp = None
@@ -117,7 +117,7 @@ class DailyPipeline:
             with self.repository.transaction() as connection:
                 key = RunKey(resolved_date, version.id, self.config.version)
                 existing = self.repository.find_run(connection, key)
-                if existing is not None:
+                if existing is not None and existing.status != "failed":
                     return existing
                 run_id = self.repository.start_run(
                     connection, key, universe_count=universe_count

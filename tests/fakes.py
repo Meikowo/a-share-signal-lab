@@ -43,6 +43,8 @@ class FakeRepository:
         return self.runs.get(key)
 
     def start_run(self, connection, key, universe_count):
+        if key in self.runs:
+            return self.runs[key].run_id
         run_id = uuid4()
         self.runs[key] = RunSummary(
             run_id=run_id,
