@@ -13,6 +13,7 @@ def test_daily_workflow_builds_and_deploys_pages_after_privacy_scan():
     assert "actions/upload-pages-artifact" in text
     assert "actions/deploy-pages" in text
     assert "needs: screen" in text
+    assert text.index("npm run test:run") < text.index("rm -rf web/public/data/fixture")
 
 
 def test_repository_never_commits_generated_production_data():

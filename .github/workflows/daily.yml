@@ -66,12 +66,14 @@ jobs:
       - name: Build privacy-safe site
         shell: bash
         run: |
+          cd web
+          npm install --no-audit --no-fund
+          npm run test:run
+          cd ..
           rm -rf web/public/data/fixture
           mkdir -p web/public/data
           cp -R public-data/. web/public/data/
           cd web
-          npm install --no-audit --no-fund
-          npm run test:run
           npm run build
       - run: python -m assl.publish.privacy web/dist
       - uses: actions/configure-pages@v5
