@@ -6,7 +6,8 @@ def test_daily_workflow_builds_and_deploys_pages_after_privacy_scan():
 
     assert "pages: write" in text
     assert "id-token: write" in text
-    assert "npm ci" in text
+    assert "npm install --no-audit --no-fund" in text
+    assert "npm ci" not in text
     assert "npm run build" in text
     assert "assl.publish.privacy" in text
     assert "actions/upload-pages-artifact" in text
