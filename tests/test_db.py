@@ -51,9 +51,24 @@ class RecordingConnection:
         self.statements.append((str(statement), params))
         return self.results.pop(0) if self.results else Result()
 
+    def cursor(self):
+        return RecordingCursor(self)
+
+
+class RecordingCursor:
+    def __init__(self, connection):
+        self.connection = connection
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        return False
+
     def executemany(self, statement, params_seq):
-        self.batches.append((str(statement), list(params_seq)))
-        return Result(rowcount=len(self.batches[-1][1]))
+        batches = self.connection.batches
+        batches.append((str(statement), list(params_seq)))
+        return Result(rowcount=len(batches[-1][1]))
 
 
 class ConnectionContext:

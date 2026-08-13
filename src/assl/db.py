@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import asdict
 from datetime import date, datetime
@@ -32,6 +32,15 @@ _DATABASE_URL = re.compile(r"postgres(?:ql)?://\S+", re.IGNORECASE)
 
 def _sanitize_error(value: str) -> str:
     return _DATABASE_URL.sub("[redacted-database-url]", value)[:1000]
+
+
+def _execute_many(
+    connection: Connection,
+    statement: str,
+    params_seq: Iterable[Sequence[object]],
+) -> None:
+    with connection.cursor() as cursor:
+        cursor.executemany(statement, params_seq)
 
 
 def _watchlist_version_from_row(row: object) -> WatchlistVersion:
@@ -136,7 +145,8 @@ class AsslRepository:
                 version.note,
             ),
         )
-        connection.executemany(
+        _execute_many(
+            connection,
             """
             insert into assl_private.watchlist_members
                 (watchlist_version_id, symbol, name, exchange,
@@ -358,7 +368,8 @@ class AsslRepository:
         )
         if not rows:
             return 0
-        connection.executemany(
+        _execute_many(
+            connection,
             """
             insert into assl_private.daily_bars
                 (symbol, trade_date, open, high, low, close, volume,
@@ -426,7 +437,8 @@ class AsslRepository:
         run_id: UUID,
         ranked_signals: Sequence[tuple[int | None, StockSignal]],
     ) -> None:
-        connection.executemany(
+        _execute_many(
+            connection,
             """
             insert into assl_private.signal_results
                 (run_id, symbol, overall_rank, public_bucket, signal_channel,
@@ -544,7 +556,8 @@ class AsslRepository:
             )
             for outcome in outcomes
         )
-        connection.executemany(
+        _execute_many(
+            connection,
             """
             insert into assl_private.candidate_outcomes
                 (run_id, symbol, model, horizon_days, entry_date, entry_price,
