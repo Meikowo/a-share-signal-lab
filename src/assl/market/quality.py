@@ -26,6 +26,7 @@ def calculate_coverage(
     universe: Sequence[Instrument],
     fetched: Mapping[str, Sequence[Bar]],
     source_timestamp: datetime | None,
+    minimum_ratio: float = 0.98,
 ) -> Coverage:
     symbols = tuple(item.symbol for item in universe)
     covered = {symbol for symbol in symbols if fetched.get(symbol)}
@@ -38,5 +39,5 @@ def calculate_coverage(
         covered_count=covered_count,
         missing_symbols=missing,
         source_timestamp=source_timestamp,
-        publishable=universe_count > 0 and ratio >= 0.98,
+        publishable=universe_count > 0 and ratio >= minimum_ratio,
     )

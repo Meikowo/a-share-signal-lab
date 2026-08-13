@@ -214,7 +214,7 @@ class AsslRepository:
             covered_count=covered_count,
             missing_symbols=tuple(row["missing_symbols"] or ()),
             source_timestamp=row["source_timestamp"],
-            publishable=(universe_count > 0 and covered_count / universe_count >= 0.98),
+            publishable=row["status"] == "succeeded",
         )
         return RunSummary(
             run_id=row["id"],

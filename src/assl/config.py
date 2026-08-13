@@ -19,12 +19,12 @@ class AlgorithmConfig:
     @classmethod
     def macd_v1(cls) -> AlgorithmConfig:
         return cls(
-            version="macd-v1",
+            version="macd-v1.1",
             fast=12,
             slow=26,
             signal=9,
             ma_windows=(20, 30, 60),
-            publish_coverage=0.98,
+            publish_coverage=0.97,
             rounding_digits=6,
             grade_order=("强S", "S", "A+", "A", "B+", "B", "未评级"),
             ranking_order=(

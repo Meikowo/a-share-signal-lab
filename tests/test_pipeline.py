@@ -44,7 +44,7 @@ def test_run_uses_last_completed_date_and_is_idempotent(monkeypatch):
 
 def test_low_coverage_fails_without_signal_persistence(monkeypatch):
     members = _members(100)
-    bars = {member.instrument.symbol: _bars(member.instrument.symbol) for member in members[:97]}
+    bars = {member.instrument.symbol: _bars(member.instrument.symbol) for member in members[:96]}
     repository = FakeRepository(members, bars)
     market = FakeMarket(_batch({}))
     monkeypatch.setattr(pipeline_module, "classify_stock", _classify)
@@ -53,12 +53,26 @@ def test_low_coverage_fails_without_signal_persistence(monkeypatch):
 
     assert summary.status == "failed"
     assert repository.signal_results == []
-    assert summary.coverage.covered_count == 97
+    assert summary.coverage.covered_count == 96
+
+
+def test_configured_coverage_threshold_allows_97_percent(monkeypatch):
+    members = _members(100)
+    bars = {member.instrument.symbol: _bars(member.instrument.symbol) for member in members[:97]}
+    repository = FakeRepository(members, bars)
+    monkeypatch.setattr(pipeline_module, "classify_stock", _classify)
+
+    summary = DailyPipeline(
+        repository, FakeMarket(_batch({})), AlgorithmConfig.macd_v1()
+    ).run(date(2026, 8, 11))
+
+    assert summary.status == "succeeded"
+    assert summary.coverage.publishable is True
 
 
 def test_failed_low_coverage_run_can_retry_after_missing_bars_arrive(monkeypatch):
     members = _members(100)
-    bars = {member.instrument.symbol: _bars(member.instrument.symbol) for member in members[:97]}
+    bars = {member.instrument.symbol: _bars(member.instrument.symbol) for member in members[:96]}
     repository = FakeRepository(members, bars)
     market = FakeMarket(_batch({}))
     monkeypatch.setattr(pipeline_module, "classify_stock", _classify)
@@ -68,7 +82,7 @@ def test_failed_low_coverage_run_can_retry_after_missing_bars_arrive(monkeypatch
     market.batch = _batch(
         {
             member.instrument.symbol: _bars(member.instrument.symbol)
-            for member in members[97:]
+            for member in members[96:]
         }
     )
     second = pipeline.run(date(2026, 8, 11))

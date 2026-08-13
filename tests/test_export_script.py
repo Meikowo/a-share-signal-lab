@@ -20,5 +20,5 @@ def test_export_script_uses_private_repository_and_writes_bundle(tmp_path, monke
     monkeypatch.setattr(script, "export_public_bundle", export)
 
     assert script.main([str(tmp_path / "public")]) == 0
-    assert captured["version"] == "macd-v1"
+    assert captured["version"] == "macd-v1.1"
     assert captured["output"] == tmp_path / "public"

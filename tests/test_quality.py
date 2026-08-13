@@ -22,7 +22,7 @@ def test_validate_bars_rejects_out_of_order_and_future_rows():
         validate_bars((bar(12),), date(2026, 8, 11))
 
 
-def test_coverage_requires_98_percent_and_records_missing_symbols():
+def test_coverage_uses_configured_threshold_and_records_missing_symbols():
     universe = tuple(
         Instrument.from_secid(f"0.00{index:04d}", f"股票{index}")
         for index in range(1, 101)
@@ -33,6 +33,7 @@ def test_coverage_requires_98_percent_and_records_missing_symbols():
         universe,
         fetched,
         source_timestamp=datetime(2026, 8, 11, 7, 1, tzinfo=UTC),
+        minimum_ratio=0.98,
     )
 
     assert coverage.covered_count == 97
@@ -47,6 +48,8 @@ def test_coverage_is_publishable_at_exact_threshold():
     )
     fetched = {item.symbol: (bar(11, item.symbol),) for item in universe[:98]}
 
-    coverage = calculate_coverage(universe, fetched, source_timestamp=None)
+    coverage = calculate_coverage(
+        universe, fetched, source_timestamp=None, minimum_ratio=0.98
+    )
 
     assert coverage.publishable is True

@@ -192,11 +192,11 @@ def test_ensure_algorithm_version_is_idempotent():
         connection, AlgorithmConfig.macd_v1(), code_sha="abc123"
     )
 
-    assert version == "macd-v1"
+    assert version == "macd-v1.1"
     sql, params = connection.statements[0]
     assert "insert into assl_private.algorithm_versions" in sql.lower()
     assert "on conflict (id) do nothing" in sql.lower()
-    assert params[0:2] == ("macd-v1", "abc123")
+    assert params[0:2] == ("macd-v1.1", "abc123")
 
 
 def test_find_run_maps_persisted_summary():
@@ -213,9 +213,9 @@ def test_find_run_maps_persisted_summary():
                     "id": run_id,
                     "as_of_date": date(2026, 8, 11),
                     "status": "succeeded",
-                    "universe_count": 2,
-                    "covered_count": 2,
-                    "missing_symbols": [],
+                    "universe_count": 100,
+                    "covered_count": 97,
+                    "missing_symbols": ["000098", "000099", "000100"],
                     "source_timestamp": datetime(2026, 8, 11, 7, 1, tzinfo=UTC),
                     "result_sha256": "d" * 64,
                 }

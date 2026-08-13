@@ -131,11 +131,17 @@ class DailyPipeline:
                 for symbol, bars in histories.items()
                 if len(bars) >= 60 and bars[-1].trade_date == resolved_date
             }
-            coverage = calculate_coverage(instruments, eligible, source_timestamp)
+            coverage = calculate_coverage(
+                instruments,
+                eligible,
+                source_timestamp,
+                minimum_ratio=self.config.publish_coverage,
+            )
             if not coverage.publishable:
                 error = RunError(
                     "validate_data",
-                    f"coverage {coverage.covered_count}/{coverage.universe_count} is below 98%",
+                    f"coverage {coverage.covered_count}/{coverage.universe_count} "
+                    f"is below {self.config.publish_coverage:.0%}",
                 )
                 with self.repository.transaction() as connection:
                     self.repository.finish_run(connection, run_id, "failed", coverage, error)
