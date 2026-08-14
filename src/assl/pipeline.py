@@ -88,7 +88,16 @@ class DailyPipeline:
                     connection,
                     RunKey(preliminary_date, version.id, self.config.version),
                 )
-                if existing is not None and existing.status != "failed":
+                can_reuse_before_fetch = (
+                    offline
+                    or as_of_date is not None
+                    or preliminary_date == latest_completed
+                )
+                if (
+                    can_reuse_before_fetch
+                    and existing is not None
+                    and existing.status != "failed"
+                ):
                     return existing
 
             source_timestamp = None
