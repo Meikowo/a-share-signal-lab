@@ -216,9 +216,6 @@ class DailyPipeline:
             stage = "persist"
             with self.repository.transaction() as connection:
                 self.repository.insert_signal_results(connection, run_id, persisted)
-                self.repository.delete_prepublication_outcomes(
-                    connection, self.config.version
-                )
                 self.repository.upsert_candidate_outcomes(connection, outcomes)
                 outcome_summary = self.repository.outcome_summary(
                     connection, self.config.version
@@ -294,9 +291,6 @@ class DailyPipeline:
     def _refresh_outcomes(self, as_of_date: date) -> None:
         outcomes = self._evaluate_outcomes(as_of_date)
         with self.repository.transaction() as connection:
-            self.repository.delete_prepublication_outcomes(
-                connection, self.config.version
-            )
             self.repository.upsert_candidate_outcomes(connection, outcomes)
 
     def _latest_completed_date(self) -> date:

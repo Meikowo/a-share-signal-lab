@@ -25,7 +25,6 @@ class FakeRepository:
         self.finished = []
         self.outcome_candidates = ()
         self.outcomes = []
-        self.prepublication_cleanup_count = 0
 
     @contextmanager
     def transaction(self):
@@ -108,10 +107,6 @@ class FakeRepository:
             for candidate in self.outcome_candidates
             if candidate.detection_date < before_date
         )
-
-    def delete_prepublication_outcomes(self, connection, algorithm_version):
-        self.prepublication_cleanup_count += 1
-        return 0
 
     def upsert_candidate_outcomes(self, connection, outcomes):
         self.outcomes.extend(outcomes)

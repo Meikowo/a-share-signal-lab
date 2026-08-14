@@ -373,6 +373,7 @@ class AsslRepository:
               and run.status = 'succeeded'
               and outcome.model = 'fixed_horizon'
               and outcome.net_return is not null
+              and outcome.entry_date > run.as_of_date
               and sr.public_bucket in ('top10', 'p1', 'p2')
             order by run.as_of_date, outcome.symbol, outcome.horizon_days
             """,
@@ -586,27 +587,6 @@ class AsslRepository:
             for row in rows
         )
 
-    def delete_prepublication_outcomes(
-        self,
-        connection: Connection,
-        algorithm_version: str,
-    ) -> int:
-        result = connection.execute(
-            """
-            delete from assl_private.candidate_outcomes outcome
-            using assl_private.signal_results sr,
-                  assl_private.screening_runs run
-            where outcome.run_id = sr.run_id
-              and outcome.symbol = sr.symbol
-              and run.id = sr.run_id
-              and run.algorithm_version_id = %s
-              and outcome.model = 'fixed_horizon'
-              and outcome.entry_date <= run.as_of_date
-            """,
-            (algorithm_version,),
-        )
-        return result.rowcount or 0
-
     def upsert_candidate_outcomes(
         self,
         connection: Connection,
@@ -685,6 +665,7 @@ class AsslRepository:
                   and run.status = 'succeeded'
                   and outcome.model = 'fixed_horizon'
                   and outcome.net_return is not null
+                  and outcome.entry_date > run.as_of_date
                   and sr.public_bucket in ('top10', 'p1', 'p2')
             )
             select 'all' as bucket,
