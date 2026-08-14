@@ -69,7 +69,7 @@ def test_fixed_horizon_can_evaluate_persisted_candidate_reference():
     reference = OutcomeCandidateRef(
         run_id=UUID("00000000-0000-0000-0000-000000000123"),
         symbol="600000",
-        signal_date=date(2026, 8, 11),
+        detection_date=date(2026, 8, 11),
     )
 
     outcome = evaluate_fixed_horizon_ref(
@@ -83,6 +83,7 @@ def test_fixed_horizon_can_evaluate_persisted_candidate_reference():
     assert outcome.run_id == reference.run_id
     assert outcome.symbol == reference.symbol
     assert outcome.horizon_days == 5
+    assert outcome.entry_date > reference.detection_date
 
 
 def stock_bars():

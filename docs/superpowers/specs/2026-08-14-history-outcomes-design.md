@@ -9,6 +9,7 @@ Turn the history page from a daily count archive into a usable candidate ledger,
 - Selecting a date on the history page displays that date's complete `Top10`, `P1`, `P2`, and `风险观察` lists.
 - The four lists are tabs. A stock appears only in the bucket stored in that immutable signal snapshot.
 - Positive candidates show `T+1`, `T+5`, `T+10`, and `T+20` forward outcomes.
+- Every forward outcome starts at the next trading session after the public list's `as_of_date`; an older technical `signal_date` must never move the entry date earlier than publication.
 - Each matured horizon shows absolute net return after the existing 10 bp entry and 10 bp exit costs, plus the existing `MAE` value labelled `最大浮亏`.
 - An unmatured or unavailable horizon shows `观察中`.
 - Risk-watch candidates remain visible in history but are excluded from positive-strategy win-rate statistics.

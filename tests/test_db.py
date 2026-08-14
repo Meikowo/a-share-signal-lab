@@ -447,10 +447,11 @@ def test_outcome_repository_lists_candidates_upserts_and_summarizes():
                     {
                         "run_id": run_id,
                         "symbol": "600000",
-                        "signal_date": date(2026, 8, 3),
+                        "detection_date": date(2026, 8, 10),
                     }
                 ]
             ),
+            Result(rowcount=3),
             Result(
                 rows=[
                     {
@@ -471,6 +472,7 @@ def test_outcome_repository_lists_candidates_upserts_and_summarizes():
     candidates = repository.list_outcome_candidates(
         connection, "macd-v1", before_date=date(2026, 8, 11)
     )
+    deleted = repository.delete_prepublication_outcomes(connection, "macd-v1")
     repository.upsert_candidate_outcomes(
         connection,
         (
@@ -499,12 +501,17 @@ def test_outcome_repository_lists_candidates_upserts_and_summarizes():
     summary = repository.outcome_summary(connection, "macd-v1")
 
     assert candidates[0].symbol == "600000"
+    assert candidates[0].detection_date == date(2026, 8, 10)
     assert "public_bucket in ('top10', 'p1', 'p2')" in connection.statements[0][0].lower()
+    assert "run.as_of_date as detection_date" in connection.statements[0][0].lower()
+    assert "sr.signal_date" not in connection.statements[0][0].lower()
+    assert deleted == 3
+    assert "outcome.entry_date <= run.as_of_date" in connection.statements[1][0].lower()
     assert "on conflict (run_id, symbol, model, horizon_days)" in connection.batches[0][0].lower()
     assert summary[0]["sample_count"] == 8
     assert summary[0]["bucket"] == "all"
     assert summary[0]["avg_mae"] == -0.031
-    summary_sql = connection.statements[1][0].lower()
+    summary_sql = connection.statements[2][0].lower()
     assert "signal_results" in summary_sql
     assert "avg(outcome.mae)" in summary_sql
 

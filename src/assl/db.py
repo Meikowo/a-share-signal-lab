@@ -566,14 +566,13 @@ class AsslRepository:
     ) -> tuple[OutcomeCandidateRef, ...]:
         rows = connection.execute(
             """
-            select sr.run_id, sr.symbol, sr.signal_date
+            select sr.run_id, sr.symbol, run.as_of_date as detection_date
             from assl_private.signal_results sr
             join assl_private.screening_runs run on run.id = sr.run_id
             where run.algorithm_version_id = %s
               and run.status = 'succeeded'
               and run.as_of_date < %s
               and sr.public_bucket in ('top10', 'p1', 'p2')
-              and sr.signal_date is not null
             order by run.as_of_date, sr.symbol
             """,
             (algorithm_version, before_date),
@@ -582,10 +581,31 @@ class AsslRepository:
             OutcomeCandidateRef(
                 run_id=row["run_id"],
                 symbol=row["symbol"],
-                signal_date=row["signal_date"],
+                detection_date=row["detection_date"],
             )
             for row in rows
         )
+
+    def delete_prepublication_outcomes(
+        self,
+        connection: Connection,
+        algorithm_version: str,
+    ) -> int:
+        result = connection.execute(
+            """
+            delete from assl_private.candidate_outcomes outcome
+            using assl_private.signal_results sr,
+                  assl_private.screening_runs run
+            where outcome.run_id = sr.run_id
+              and outcome.symbol = sr.symbol
+              and run.id = sr.run_id
+              and run.algorithm_version_id = %s
+              and outcome.model = 'fixed_horizon'
+              and outcome.entry_date <= run.as_of_date
+            """,
+            (algorithm_version,),
+        )
+        return result.rowcount or 0
 
     def upsert_candidate_outcomes(
         self,
