@@ -21,3 +21,11 @@ def test_repository_never_commits_generated_production_data():
 
     assert "public-data/" in text
     assert "web/public/data/*" in text
+
+
+def test_daily_workflow_supports_explicit_cached_history_backfill():
+    text = Path(".github/workflows/daily.yml").read_text(encoding="utf-8")
+
+    assert "backfill_sessions:" in text
+    assert "assl backfill --sessions" in text
+    assert "inputs.backfill_sessions" in text

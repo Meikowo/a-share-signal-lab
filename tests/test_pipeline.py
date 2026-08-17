@@ -42,47 +42,6 @@ def test_run_uses_last_completed_date_and_is_idempotent(monkeypatch):
     assert len(repository.snapshots) == 1
 
 
-def test_automatic_run_fetches_when_cached_snapshot_is_older_than_completed_session(
-    monkeypatch,
-):
-    members = _members(1)
-    symbol = members[0].instrument.symbol
-    cached_bars = _bars(symbol) + (
-        Bar(symbol, date(2026, 8, 12), 10, 11, 9, 10.5, 1000),
-    )
-    repository = FakeRepository(members, {symbol: cached_bars})
-    monkeypatch.setattr(pipeline_module, "classify_stock", _classify)
-    config = AlgorithmConfig.macd_v1()
-
-    previous = DailyPipeline(
-        repository,
-        FakeMarket(_batch({})),
-        config,
-        clock=lambda: datetime(2026, 8, 13, 23, 0, tzinfo=UTC),
-    ).run(date(2026, 8, 12), offline=True)
-
-    market = FakeMarket(
-        _batch(
-            {
-                symbol: (Bar(symbol, date(2026, 8, 13), 10, 11, 9, 10.6, 1100),),
-                "000300": (
-                    Bar("000300", date(2026, 8, 13), 4700, 4720, 4660, 4664, 1),
-                ),
-            }
-        )
-    )
-    current = DailyPipeline(
-        repository,
-        market,
-        config,
-        clock=lambda: datetime(2026, 8, 13, 23, 0, tzinfo=UTC),
-    ).run()
-
-    assert previous.as_of_date == date(2026, 8, 12)
-    assert market.calls == 1
-    assert current.as_of_date == date(2026, 8, 13)
-
-
 def test_low_coverage_fails_without_signal_persistence(monkeypatch):
     members = _members(100)
     bars = {member.instrument.symbol: _bars(member.instrument.symbol) for member in members[:96]}
@@ -178,7 +137,7 @@ def test_daily_run_backfills_matured_fixed_horizon_outcomes(monkeypatch):
         OutcomeCandidateRef(
             run_id=UUID("00000000-0000-0000-0000-000000000123"),
             symbol=members[0].instrument.symbol,
-            detection_date=date(2026, 8, 3),
+            signal_date=date(2026, 8, 3),
         ),
     )
     monkeypatch.setattr(pipeline_module, "classify_stock", _classify)
@@ -190,38 +149,6 @@ def test_daily_run_backfills_matured_fixed_horizon_outcomes(monkeypatch):
     ).run(date(2026, 8, 11), offline=True)
 
     assert summary.status == "succeeded"
-    assert {outcome.horizon_days for outcome in repository.outcomes} == {1, 5}
-
-
-def test_reused_run_refreshes_outcomes_for_existing_public_lists(monkeypatch):
-    members = _members(1)
-    stock_bars = _bars(members[0].instrument.symbol)
-    benchmark_bars = tuple(
-        Bar("000300", bar.trade_date, 20, 21, 19, 20.5, 2000) for bar in stock_bars
-    )
-    repository = FakeRepository(
-        members,
-        {members[0].instrument.symbol: stock_bars, "000300": benchmark_bars},
-    )
-    monkeypatch.setattr(pipeline_module, "classify_stock", _classify)
-    pipeline = DailyPipeline(
-        repository,
-        FakeMarket(_batch({})),
-        AlgorithmConfig.macd_v1(),
-    )
-    first = pipeline.run(date(2026, 8, 11), offline=True)
-    repository.outcome_candidates = (
-        OutcomeCandidateRef(
-            run_id=UUID("00000000-0000-0000-0000-000000000123"),
-            symbol=members[0].instrument.symbol,
-            detection_date=date(2026, 8, 3),
-        ),
-    )
-
-    second = pipeline.run(date(2026, 8, 11), offline=True)
-
-    assert second.run_id == first.run_id
-    assert repository.run_count == 1
     assert {outcome.horizon_days for outcome in repository.outcomes} == {1, 5}
 
 

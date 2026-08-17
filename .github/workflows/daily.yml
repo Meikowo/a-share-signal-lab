@@ -9,6 +9,10 @@ on:
         description: "Optional completed A-share session (YYYY-MM-DD)"
         required: false
         type: string
+      backfill_sessions:
+        description: "Optional cached trading sessions to reconstruct (for example 22)"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -35,9 +39,13 @@ jobs:
       - name: Run private screening
         shell: bash
         run: |
-          args=()
-          if [ -n "${{ inputs.as_of }}" ]; then args+=(--as-of "${{ inputs.as_of }}"); fi
-          assl run-daily "${args[@]}"
+          if [ -n "${{ inputs.backfill_sessions }}" ]; then
+            assl backfill --sessions "${{ inputs.backfill_sessions }}"
+          else
+            args=()
+            if [ -n "${{ inputs.as_of }}" ]; then args+=(--as-of "${{ inputs.as_of }}"); fi
+            assl run-daily "${args[@]}"
+          fi
       - name: Export privacy-checked public data
         run: python scripts/export_public.py public-data
       - uses: actions/upload-artifact@v4

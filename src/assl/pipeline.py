@@ -49,7 +49,7 @@ class DailyPipeline:
         *,
         offline: bool = False,
     ) -> RunSummary:
-        latest_completed = self._latest_completed_date()
+        latest_completed = self.latest_completed_date()
         if as_of_date is not None and as_of_date > latest_completed:
             raise ValueError(
                 f"as-of date {as_of_date} is later than completed session {latest_completed}"
@@ -88,23 +88,8 @@ class DailyPipeline:
                     connection,
                     RunKey(preliminary_date, version.id, self.config.version),
                 )
-                can_reuse_before_fetch = (
-                    offline
-                    or as_of_date is not None
-                    or preliminary_date == latest_completed
-                )
-                if (
-                    can_reuse_before_fetch
-                    and existing is not None
-                    and existing.status != "failed"
-                ):
-                    reusable_run = existing
-                else:
-                    reusable_run = None
-
-            if reusable_run is not None:
-                self._refresh_outcomes(preliminary_date)
-                return reusable_run
+                if existing is not None and existing.status != "failed":
+                    return existing
 
             source_timestamp = None
             if not offline:
@@ -133,16 +118,10 @@ class DailyPipeline:
                 key = RunKey(resolved_date, version.id, self.config.version)
                 existing = self.repository.find_run(connection, key)
                 if existing is not None and existing.status != "failed":
-                    reusable_run = existing
-                else:
-                    reusable_run = None
-                    run_id = self.repository.start_run(
-                        connection, key, universe_count=universe_count
-                    )
-
-            if reusable_run is not None:
-                self._refresh_outcomes(resolved_date)
-                return reusable_run
+                    return existing
+                run_id = self.repository.start_run(
+                    connection, key, universe_count=universe_count
+                )
 
             stage = "validate_data"
             with self.repository.transaction() as connection:
@@ -277,7 +256,7 @@ class DailyPipeline:
         outcomes = []
         for candidate in candidates:
             stock_bars = histories.get(candidate.symbol, ())
-            for horizon in matured_horizons(candidate.detection_date, benchmark_bars):
+            for horizon in matured_horizons(candidate.signal_date, benchmark_bars):
                 outcome = evaluate_fixed_horizon_ref(
                     candidate,
                     stock_bars,
@@ -288,12 +267,7 @@ class DailyPipeline:
                     outcomes.append(outcome)
         return tuple(outcomes)
 
-    def _refresh_outcomes(self, as_of_date: date) -> None:
-        outcomes = self._evaluate_outcomes(as_of_date)
-        with self.repository.transaction() as connection:
-            self.repository.upsert_candidate_outcomes(connection, outcomes)
-
-    def _latest_completed_date(self) -> date:
+    def latest_completed_date(self) -> date:
         now = self.clock().astimezone(CHINA_TZ)
         candidate = now.date()
         if now.time() < time(16, 0):
