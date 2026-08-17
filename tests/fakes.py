@@ -105,7 +105,7 @@ class FakeRepository:
         return tuple(
             candidate
             for candidate in self.outcome_candidates
-            if candidate.signal_date < before_date
+            if candidate.selection_date < before_date
         )
 
     def upsert_candidate_outcomes(self, connection, outcomes):

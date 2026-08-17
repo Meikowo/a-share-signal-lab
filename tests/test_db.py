@@ -475,7 +475,7 @@ def test_outcome_repository_lists_candidates_upserts_and_summarizes():
                     {
                         "run_id": run_id,
                         "symbol": "600000",
-                        "signal_date": date(2026, 8, 3),
+                        "selection_date": date(2026, 8, 4),
                     }
                 ]
             ),
@@ -527,7 +527,11 @@ def test_outcome_repository_lists_candidates_upserts_and_summarizes():
     summary = repository.outcome_summary(connection, "macd-v1")
 
     assert candidates[0].symbol == "600000"
+    assert getattr(candidates[0], "selection_date", None) == date(2026, 8, 4)
     assert "public_bucket in ('top10', 'p1', 'p2')" in connection.statements[0][0].lower()
+    candidate_sql = connection.statements[0][0].lower()
+    assert "run.as_of_date as selection_date" in candidate_sql
+    assert "sr.signal_date" not in candidate_sql
     assert "on conflict (run_id, symbol, model, horizon_days)" in connection.batches[0][0].lower()
     assert summary[0]["sample_count"] == 8
     assert summary[0]["bucket"] == "all"

@@ -89,7 +89,13 @@ class DailyPipeline:
                     RunKey(preliminary_date, version.id, self.config.version),
                 )
                 if existing is not None and existing.status != "failed":
-                    return existing
+                    reusable_run = existing
+                else:
+                    reusable_run = None
+
+            if reusable_run is not None:
+                self._refresh_outcomes(preliminary_date)
+                return reusable_run
 
             source_timestamp = None
             if not offline:
@@ -118,10 +124,16 @@ class DailyPipeline:
                 key = RunKey(resolved_date, version.id, self.config.version)
                 existing = self.repository.find_run(connection, key)
                 if existing is not None and existing.status != "failed":
-                    return existing
-                run_id = self.repository.start_run(
-                    connection, key, universe_count=universe_count
-                )
+                    reusable_run = existing
+                else:
+                    reusable_run = None
+                    run_id = self.repository.start_run(
+                        connection, key, universe_count=universe_count
+                    )
+
+            if reusable_run is not None:
+                self._refresh_outcomes(resolved_date)
+                return reusable_run
 
             stage = "validate_data"
             with self.repository.transaction() as connection:
@@ -256,7 +268,7 @@ class DailyPipeline:
         outcomes = []
         for candidate in candidates:
             stock_bars = histories.get(candidate.symbol, ())
-            for horizon in matured_horizons(candidate.signal_date, benchmark_bars):
+            for horizon in matured_horizons(candidate.selection_date, benchmark_bars):
                 outcome = evaluate_fixed_horizon_ref(
                     candidate,
                     stock_bars,
@@ -266,6 +278,11 @@ class DailyPipeline:
                 if outcome is not None:
                     outcomes.append(outcome)
         return tuple(outcomes)
+
+    def _refresh_outcomes(self, as_of_date: date) -> None:
+        outcomes = self._evaluate_outcomes(as_of_date)
+        with self.repository.transaction() as connection:
+            self.repository.upsert_candidate_outcomes(connection, outcomes)
 
     def latest_completed_date(self) -> date:
         now = self.clock().astimezone(CHINA_TZ)

@@ -137,7 +137,7 @@ def test_daily_run_backfills_matured_fixed_horizon_outcomes(monkeypatch):
         OutcomeCandidateRef(
             run_id=UUID("00000000-0000-0000-0000-000000000123"),
             symbol=members[0].instrument.symbol,
-            signal_date=date(2026, 8, 3),
+            selection_date=date(2026, 8, 3),
         ),
     )
     monkeypatch.setattr(pipeline_module, "classify_stock", _classify)
@@ -149,6 +149,38 @@ def test_daily_run_backfills_matured_fixed_horizon_outcomes(monkeypatch):
     ).run(date(2026, 8, 11), offline=True)
 
     assert summary.status == "succeeded"
+    assert {outcome.horizon_days for outcome in repository.outcomes} == {1, 5}
+
+
+def test_reused_run_refreshes_matured_outcomes(monkeypatch):
+    members = _members(1)
+    stock_bars = _bars(members[0].instrument.symbol)
+    benchmark_bars = tuple(
+        Bar("000300", bar.trade_date, 20, 21, 19, 20.5, 2000) for bar in stock_bars
+    )
+    repository = FakeRepository(
+        members,
+        {members[0].instrument.symbol: stock_bars, "000300": benchmark_bars},
+    )
+    monkeypatch.setattr(pipeline_module, "classify_stock", _classify)
+    pipeline = DailyPipeline(
+        repository,
+        FakeMarket(_batch({})),
+        AlgorithmConfig.macd_v1(),
+    )
+    first = pipeline.run(date(2026, 8, 11), offline=True)
+    repository.outcome_candidates = (
+        OutcomeCandidateRef(
+            run_id=UUID("00000000-0000-0000-0000-000000000123"),
+            symbol=members[0].instrument.symbol,
+            selection_date=date(2026, 8, 3),
+        ),
+    )
+
+    second = pipeline.run(date(2026, 8, 11), offline=True)
+
+    assert second.run_id == first.run_id
+    assert repository.run_count == 1
     assert {outcome.horizon_days for outcome in repository.outcomes} == {1, 5}
 
 

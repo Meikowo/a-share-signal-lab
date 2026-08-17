@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import date, timedelta
 from decimal import Decimal
 from uuid import UUID
@@ -27,6 +28,28 @@ def test_fixed_horizon_uses_t_plus_1_open_and_close():
     assert outcome.exit_price == Decimal("10.500000")
     assert outcome.gross_return == Decimal("0.050000")
     assert outcome.net_return == Decimal("0.047902")
+
+
+def test_fixed_horizon_starts_after_selection_date_not_older_signal_date():
+    signal = replace(
+        make_signal("600000", Grade.B_PLUS, priority=1),
+        signal_date=date(2026, 8, 7),
+    )
+    dates = (date(2026, 8, 10), date(2026, 8, 11), date(2026, 8, 12))
+    stock = tuple(
+        Bar("600000", day, 10 + index, 11 + index, 9 + index, 10.5 + index, 1000)
+        for index, day in enumerate(dates)
+    )
+    benchmark = tuple(
+        Bar("000300", day, 100 + index, 102 + index, 99 + index, 101 + index, 1000)
+        for index, day in enumerate(dates)
+    )
+
+    outcome = evaluate_fixed_horizon(signal, stock, benchmark, horizon=1)
+
+    assert outcome is not None
+    assert signal.as_of_date == date(2026, 8, 11)
+    assert outcome.entry_date == date(2026, 8, 12)
 
 
 def test_missing_t_plus_1_open_is_not_fabricated():
@@ -69,7 +92,7 @@ def test_fixed_horizon_can_evaluate_persisted_candidate_reference():
     reference = OutcomeCandidateRef(
         run_id=UUID("00000000-0000-0000-0000-000000000123"),
         symbol="600000",
-        signal_date=date(2026, 8, 11),
+        selection_date=date(2026, 8, 11),
     )
 
     outcome = evaluate_fixed_horizon_ref(
@@ -83,6 +106,7 @@ def test_fixed_horizon_can_evaluate_persisted_candidate_reference():
     assert outcome.run_id == reference.run_id
     assert outcome.symbol == reference.symbol
     assert outcome.horizon_days == 5
+    assert outcome.entry_date > reference.selection_date
 
 
 def stock_bars():

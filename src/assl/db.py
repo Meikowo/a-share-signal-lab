@@ -591,14 +591,13 @@ class AsslRepository:
     ) -> tuple[OutcomeCandidateRef, ...]:
         rows = connection.execute(
             """
-            select sr.run_id, sr.symbol, sr.signal_date
+            select sr.run_id, sr.symbol, run.as_of_date as selection_date
             from assl_private.signal_results sr
             join assl_private.screening_runs run on run.id = sr.run_id
             where run.algorithm_version_id = %s
               and run.status = 'succeeded'
               and run.as_of_date < %s
               and sr.public_bucket in ('top10', 'p1', 'p2')
-              and sr.signal_date is not null
             order by run.as_of_date, sr.symbol
             """,
             (algorithm_version, before_date),
@@ -607,7 +606,7 @@ class AsslRepository:
             OutcomeCandidateRef(
                 run_id=row["run_id"],
                 symbol=row["symbol"],
-                signal_date=row["signal_date"],
+                selection_date=row["selection_date"],
             )
             for row in rows
         )
