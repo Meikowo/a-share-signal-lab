@@ -26,6 +26,14 @@ describe("ASSL dashboard", () => {
     expect(screen.queryByText(/ChatGPT|OpenAI/)).not.toBeInTheDocument();
   });
 
+  it("keeps the daily metrics while omitting the dark summary hero", async () => {
+    render(<App />);
+
+    expect(await screen.findByText("今日 Top 10")).toBeVisible();
+    expect(screen.queryByText("今日信号摘要")).not.toBeInTheDocument();
+    expect(screen.queryByText("数据覆盖率")).not.toBeInTheDocument();
+  });
+
   it("renders matured forward outcome statistics", async () => {
     location.hash = "#/backtest";
     const withOutcomes = {
