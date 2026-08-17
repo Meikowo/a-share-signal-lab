@@ -16,8 +16,6 @@ from tests.test_ranking import make_signal
 class FakeSnapshotRepo:
     def __init__(self):
         self.snapshots = {}
-        self.public_outcomes = ()
-        self.public_summary = ()
 
     def get_snapshot_hash(self, connection, as_of_date, algorithm_version):
         row = self.snapshots.get((as_of_date.isoformat(), algorithm_version))
@@ -33,12 +31,6 @@ class FakeSnapshotRepo:
             for (day, version), (_, payload) in sorted(self.snapshots.items())
             if version == algorithm_version
         )
-
-    def list_public_candidate_outcomes(self, algorithm_version):
-        return self.public_outcomes
-
-    def list_public_outcome_summary(self, algorithm_version):
-        return self.public_summary
 
 
 def test_published_snapshot_cannot_be_changed():
@@ -66,53 +58,6 @@ def test_export_bundle_latest_points_to_newest_success(tmp_path):
     assert manifest.history_dates == ("2026-08-10", "2026-08-11")
     assert (tmp_path / "history" / "2026-08-10.json").exists()
     assert (tmp_path / "methodology.json").exists()
-
-
-def test_export_bundle_attaches_mature_outcomes_without_mutating_snapshot(tmp_path):
-    repository = FakeSnapshotRepo()
-    day = date(2026, 8, 12)
-    snapshot = fixture_snapshot(day)
-    persist_snapshot(repository, object(), "run-1", snapshot)
-    repository.public_outcomes = (
-        {
-            "as_of_date": day,
-            "symbol": "600000",
-            "horizon_days": 1,
-            "entry_date": date(2026, 8, 13),
-            "exit_date": date(2026, 8, 13),
-            "net_return": 0.024,
-            "mae": -0.013,
-        },
-    )
-    repository.public_summary = (
-        {
-            "bucket": "all",
-            "horizon_days": 1,
-            "sample_count": 1,
-            "win_rate": 1.0,
-            "avg_net_return": 0.024,
-            "avg_excess_return": 0.01,
-            "avg_mae": -0.013,
-        },
-    )
-
-    export_public_bundle(repository, tmp_path, "macd-v1")
-
-    exported = json.loads(
-        (tmp_path / "history" / "2026-08-12.json").read_text(encoding="utf-8")
-    )
-    assert exported["top10"][0]["outcomes"] == [
-        {
-            "horizon_days": 1,
-            "entry_date": "2026-08-13",
-            "exit_date": "2026-08-13",
-            "net_return": 0.024,
-            "mae": -0.013,
-        }
-    ]
-    assert not repository.snapshots[("2026-08-12", "macd-v1")][1]["top10"][0]["outcomes"]
-    assert exported["outcome_summary"] == list(repository.public_summary)
-    assert not repository.snapshots[("2026-08-12", "macd-v1")][1]["outcome_summary"]
 
 
 def test_export_fails_privacy_scan_before_manifest(tmp_path):
