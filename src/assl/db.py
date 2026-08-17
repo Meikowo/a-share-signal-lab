@@ -369,6 +369,66 @@ class AsslRepository:
         ).fetchall()
         return tuple(row["payload"] for row in rows)
 
+    def list_public_candidate_outcomes(
+        self,
+        algorithm_version: str,
+        *,
+        connection: Connection | None = None,
+    ) -> tuple[dict[str, object], ...]:
+        if connection is None:
+            with self.transaction() as opened:
+                return self.list_public_candidate_outcomes(
+                    algorithm_version, connection=opened
+                )
+        rows = connection.execute(
+            """
+            select run.as_of_date,
+                   outcome.symbol,
+                   outcome.horizon_days,
+                   outcome.entry_date,
+                   outcome.exit_date,
+                   outcome.net_return::double precision as net_return,
+                   outcome.mae::double precision as mae
+            from assl_private.candidate_outcomes outcome
+            join assl_private.screening_runs run on run.id = outcome.run_id
+            join assl_private.signal_results sr
+              on sr.run_id = outcome.run_id and sr.symbol = outcome.symbol
+            where run.algorithm_version_id = %s
+              and run.status = 'succeeded'
+              and outcome.model = 'fixed_horizon'
+              and outcome.net_return is not null
+              and outcome.entry_date > run.as_of_date
+              and sr.public_bucket in ('top10', 'p1', 'p2')
+            order by run.as_of_date, outcome.symbol, outcome.horizon_days
+            """,
+            (algorithm_version,),
+        ).fetchall()
+        return tuple(
+            {
+                "as_of_date": row["as_of_date"],
+                "symbol": row["symbol"],
+                "horizon_days": row["horizon_days"],
+                "entry_date": row["entry_date"],
+                "exit_date": row["exit_date"],
+                "net_return": row["net_return"],
+                "mae": row["mae"],
+            }
+            for row in rows
+        )
+
+    def list_public_outcome_summary(
+        self,
+        algorithm_version: str,
+        *,
+        connection: Connection | None = None,
+    ) -> tuple[dict[str, object], ...]:
+        if connection is None:
+            with self.transaction() as opened:
+                return self.list_public_outcome_summary(
+                    algorithm_version, connection=opened
+                )
+        return self.outcome_summary(connection, algorithm_version)
+
     def upsert_bars(
         self,
         connection: Connection,
@@ -616,29 +676,55 @@ class AsslRepository:
     ) -> tuple[dict[str, object], ...]:
         rows = connection.execute(
             """
-            select outcome.horizon_days,
+            with eligible as (
+                select sr.public_bucket::text as bucket,
+                       outcome.horizon_days,
+                       outcome.net_return,
+                       outcome.excess_return,
+                       outcome.mae
+                from assl_private.candidate_outcomes outcome
+                join assl_private.screening_runs run on run.id = outcome.run_id
+                join assl_private.signal_results sr
+                  on sr.run_id = outcome.run_id and sr.symbol = outcome.symbol
+                where run.algorithm_version_id = %s
+                  and run.status = 'succeeded'
+                  and outcome.model = 'fixed_horizon'
+                  and outcome.net_return is not null
+                  and outcome.entry_date > run.as_of_date
+                  and sr.public_bucket in ('top10', 'p1', 'p2')
+            )
+            select 'all' as bucket,
+                   outcome.horizon_days,
                    count(*)::integer as sample_count,
                    avg((outcome.net_return > 0)::integer)::double precision as win_rate,
                    avg(outcome.net_return)::double precision as avg_net_return,
-                   avg(outcome.excess_return)::double precision as avg_excess_return
-            from assl_private.candidate_outcomes outcome
-            join assl_private.screening_runs run on run.id = outcome.run_id
-            where run.algorithm_version_id = %s
-              and run.status = 'succeeded'
-              and outcome.model = 'fixed_horizon'
-              and outcome.net_return is not null
+                   avg(outcome.excess_return)::double precision as avg_excess_return,
+                   avg(outcome.mae)::double precision as avg_mae
+            from eligible outcome
             group by outcome.horizon_days
-            order by outcome.horizon_days
+            union all
+            select outcome.bucket,
+                   outcome.horizon_days,
+                   count(*)::integer as sample_count,
+                   avg((outcome.net_return > 0)::integer)::double precision as win_rate,
+                   avg(outcome.net_return)::double precision as avg_net_return,
+                   avg(outcome.excess_return)::double precision as avg_excess_return,
+                   avg(outcome.mae)::double precision as avg_mae
+            from eligible outcome
+            group by outcome.bucket, outcome.horizon_days
+            order by bucket, horizon_days
             """,
             (algorithm_version,),
         ).fetchall()
         return tuple(
             {
+                "bucket": row["bucket"],
                 "horizon_days": row["horizon_days"],
                 "sample_count": row["sample_count"],
                 "win_rate": row["win_rate"],
                 "avg_net_return": row["avg_net_return"],
                 "avg_excess_return": row["avg_excess_return"],
+                "avg_mae": row["avg_mae"],
             }
             for row in rows
         )

@@ -304,6 +304,48 @@ def test_snapshot_repository_methods_use_immutable_key():
     assert "as_of_date = %s" in connection.statements[0][0].lower()
 
 
+def test_list_public_candidate_outcomes_returns_only_public_fields():
+    connection = RecordingConnection(
+        [
+            Result(
+                rows=[
+                    {
+                        "as_of_date": date(2026, 8, 12),
+                        "symbol": "600000",
+                        "horizon_days": 1,
+                        "entry_date": date(2026, 8, 13),
+                        "exit_date": date(2026, 8, 13),
+                        "net_return": 0.024,
+                        "mae": -0.013,
+                    }
+                ]
+            )
+        ]
+    )
+
+    outcomes = AsslRepository("unused").list_public_candidate_outcomes(
+        "macd-v1", connection=connection
+    )
+
+    assert outcomes == (
+        {
+            "as_of_date": date(2026, 8, 12),
+            "symbol": "600000",
+            "horizon_days": 1,
+            "entry_date": date(2026, 8, 13),
+            "exit_date": date(2026, 8, 13),
+            "net_return": 0.024,
+            "mae": -0.013,
+        },
+    )
+    sql = connection.statements[0][0].lower()
+    assert "outcome.model = 'fixed_horizon'" in sql
+    assert "public_bucket in ('top10', 'p1', 'p2')" in sql
+    assert "outcome.net_return::double precision" in sql
+    assert "outcome.mae::double precision" in sql
+    assert "outcome.entry_date > run.as_of_date" in sql
+
+
 def test_insert_snapshot_writes_json_payload():
     from assl.publish.schema import PublicSnapshot
 
@@ -440,11 +482,13 @@ def test_outcome_repository_lists_candidates_upserts_and_summarizes():
             Result(
                 rows=[
                     {
+                        "bucket": "all",
                         "horizon_days": 5,
                         "sample_count": 8,
                         "win_rate": 0.625,
                         "avg_net_return": 0.0123,
                         "avg_excess_return": 0.0042,
+                        "avg_mae": -0.031,
                     }
                 ]
             ),
@@ -486,6 +530,12 @@ def test_outcome_repository_lists_candidates_upserts_and_summarizes():
     assert "public_bucket in ('top10', 'p1', 'p2')" in connection.statements[0][0].lower()
     assert "on conflict (run_id, symbol, model, horizon_days)" in connection.batches[0][0].lower()
     assert summary[0]["sample_count"] == 8
+    assert summary[0]["bucket"] == "all"
+    assert summary[0]["avg_mae"] == -0.031
+    summary_sql = connection.statements[1][0].lower()
+    assert "signal_results" in summary_sql
+    assert "avg(outcome.mae)" in summary_sql
+    assert "outcome.entry_date > run.as_of_date" in summary_sql
 
 
 def _stock_signal() -> StockSignal:

@@ -7,7 +7,12 @@ export type Candidate = {
   close_vs_ma20: number | null; close_vs_ma30: number | null; close_vs_ma60: number | null;
   volume_ratio_5_20: number | null; bottom_divergence: boolean; top_divergence: boolean;
   reason: string; confirm_price: number | null; invalidation_price: number | null;
-  risk: string | null; outcomes: Record<string, unknown>[];
+  risk: string | null; outcomes: CandidateOutcome[];
+};
+
+export type CandidateOutcome = {
+  horizon_days: number; entry_date: string; exit_date: string;
+  net_return: number; mae: number;
 };
 
 export type Snapshot = {
@@ -19,8 +24,9 @@ export type Snapshot = {
 };
 
 export type OutcomeSummary = {
+  bucket?: "all" | "top10" | "p1" | "p2";
   horizon_days: number; sample_count: number; win_rate: number;
-  avg_net_return: number; avg_excess_return: number;
+  avg_net_return: number; avg_excess_return: number; avg_mae?: number;
 };
 
 export type Manifest = { schema_version:"1"; algorithm_version:string; latest_date:string; history_dates:string[]; generated_at:string; file_sha256:Record<string,string> };
