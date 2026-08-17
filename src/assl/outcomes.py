@@ -39,7 +39,7 @@ class CandidateOutcome:
 class OutcomeCandidateRef:
     run_id: UUID
     symbol: str
-    detection_date: date
+    signal_date: date
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,10 +49,10 @@ class ExitTrigger:
 
 
 def matured_horizons(
-    detection_date: date,
+    signal_date: date,
     bars: tuple[Bar, ...],
 ) -> tuple[int, ...]:
-    completed = len({bar.trade_date for bar in bars if bar.trade_date > detection_date})
+    completed = len({bar.trade_date for bar in bars if bar.trade_date > signal_date})
     return tuple(horizon for horizon in (1, 5, 10, 20) if completed >= horizon)
 
 
@@ -65,8 +65,10 @@ def evaluate_fixed_horizon(
     *,
     run_id: UUID = ZERO_UUID,
 ) -> CandidateOutcome | None:
+    if signal.signal_date is None:
+        return None
     return evaluate_fixed_horizon_ref(
-        OutcomeCandidateRef(run_id, signal.instrument.symbol, signal.as_of_date),
+        OutcomeCandidateRef(run_id, signal.instrument.symbol, signal.signal_date),
         bars,
         benchmark_bars,
         horizon,
@@ -85,7 +87,7 @@ def evaluate_fixed_horizon_ref(
         raise ValueError("horizon must be 1, 5, 10, or 20")
 
     benchmark_after = sorted(
-        (bar for bar in benchmark_bars if bar.trade_date > candidate.detection_date),
+        (bar for bar in benchmark_bars if bar.trade_date > candidate.signal_date),
         key=lambda bar: bar.trade_date,
     )
     if len(benchmark_after) < horizon:

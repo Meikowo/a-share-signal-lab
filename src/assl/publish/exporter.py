@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import json
 import shutil
-from collections import defaultdict
-from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -56,14 +54,7 @@ def export_public_bundle(
     *,
     private_symbols: tuple[str, ...] = (),
 ) -> ExportManifest:
-    payloads = attach_candidate_outcomes(
-        repository.list_snapshot_payloads(algorithm_version),
-        repository.list_public_candidate_outcomes(algorithm_version),
-    )
-    payloads = attach_outcome_summary(
-        payloads,
-        repository.list_public_outcome_summary(algorithm_version),
-    )
+    payloads = repository.list_snapshot_payloads(algorithm_version)
     if not payloads:
         raise ValueError("no successful snapshots are available to export")
     sorted_payloads = sorted(payloads, key=lambda payload: payload["as_of_date"])
@@ -131,53 +122,6 @@ def export_public_bundle(
     finally:
         if temporary.exists():
             shutil.rmtree(temporary)
-
-
-def attach_candidate_outcomes(
-    payloads: tuple[dict[str, object], ...],
-    outcomes: tuple[dict[str, object], ...],
-) -> tuple[dict[str, object], ...]:
-    by_candidate: dict[tuple[str, str], list[dict[str, object]]] = defaultdict(list)
-    for row in outcomes:
-        day = row["as_of_date"]
-        entry_date = row["entry_date"]
-        exit_date = row["exit_date"]
-        key = (day.isoformat() if isinstance(day, date) else str(day), str(row["symbol"]))
-        by_candidate[key].append(
-            {
-                "horizon_days": row["horizon_days"],
-                "entry_date": (
-                    entry_date.isoformat() if isinstance(entry_date, date) else entry_date
-                ),
-                "exit_date": exit_date.isoformat() if isinstance(exit_date, date) else exit_date,
-                "net_return": row["net_return"],
-                "mae": row["mae"],
-            }
-        )
-
-    enriched = deepcopy(payloads)
-    for payload in enriched:
-        day = str(payload["as_of_date"])
-        for bucket in ("top10", "p1", "p2"):
-            candidates = payload[bucket]
-            if not isinstance(candidates, (list, tuple)):
-                continue
-            for candidate in candidates:
-                if not isinstance(candidate, dict):
-                    continue
-                rows = by_candidate.get((day, str(candidate["symbol"])), [])
-                candidate["outcomes"] = sorted(rows, key=lambda row: int(row["horizon_days"]))
-    return enriched
-
-
-def attach_outcome_summary(
-    payloads: tuple[dict[str, object], ...],
-    summary: tuple[dict[str, object], ...],
-) -> tuple[dict[str, object], ...]:
-    enriched = deepcopy(payloads)
-    for payload in enriched:
-        payload["outcome_summary"] = deepcopy(summary)
-    return enriched
 
 
 def _write_json(path: Path, value: object) -> None:
