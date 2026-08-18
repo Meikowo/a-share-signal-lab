@@ -42,6 +42,38 @@ def test_run_uses_last_completed_date_and_is_idempotent(monkeypatch):
     assert len(repository.snapshots) == 1
 
 
+def test_automatic_online_run_fetches_when_cached_run_is_older_than_completed_session(
+    monkeypatch,
+):
+    members = _members(1)
+    symbol = members[0].instrument.symbol
+    repository = FakeRepository(members, {symbol: _bars(symbol)})
+    market = FakeMarket(
+        _batch(
+            {
+                symbol: (
+                    Bar(symbol, date(2026, 8, 17), 10, 11, 9, 10.5, 1000),
+                )
+            }
+        )
+    )
+    monkeypatch.setattr(pipeline_module, "classify_stock", _classify)
+    pipeline = DailyPipeline(
+        repository,
+        market,
+        AlgorithmConfig.macd_v1(),
+        clock=lambda: datetime(2026, 8, 17, 22, 0, tzinfo=UTC),
+    )
+    cached = pipeline.run(date(2026, 8, 11), offline=True)
+
+    refreshed = pipeline.run()
+
+    assert cached.as_of_date == date(2026, 8, 11)
+    assert refreshed.as_of_date == date(2026, 8, 17)
+    assert market.calls == 1
+    assert repository.run_count == 2
+
+
 def test_low_coverage_fails_without_signal_persistence(monkeypatch):
     members = _members(100)
     bars = {member.instrument.symbol: _bars(member.instrument.symbol) for member in members[:96]}
