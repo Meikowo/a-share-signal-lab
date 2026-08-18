@@ -46,17 +46,21 @@ function safeBase(base: string) {
   return base.replace(/\/$/, "");
 }
 
+function freshDataUrl(base: string, path: string) {
+  return `${safeBase(base)}/${path}?v=${Date.now()}`;
+}
+
 const DEFAULT_DATA = `${import.meta.env.BASE_URL}data${import.meta.env.DEV ? "/fixture" : ""}`;
 
 export async function loadManifest(base = DEFAULT_DATA) : Promise<Manifest> {
-  const response = await fetch(`${safeBase(base)}/manifest.json`);
+  const response = await fetch(freshDataUrl(base, "manifest.json"), { cache: "no-store" });
   if (!response.ok || !response.headers.get("content-type")?.includes("json")) throw new Error("无法读取历史索引");
   return response.json();
 }
 
 export async function loadSnapshot(day?: string, base = DEFAULT_DATA) : Promise<Snapshot> {
   const path = day ? `history/${encodeURIComponent(day)}.json` : "latest.json";
-  const response = await fetch(`${safeBase(base)}/${path}`);
+  const response = await fetch(freshDataUrl(base, path), { cache: "no-store" });
   if (!response.ok || !response.headers.get("content-type")?.includes("json")) throw new Error("无法读取信号快照");
   const value: unknown = await response.json(); assertSnapshot(value); return value;
 }
