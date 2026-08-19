@@ -75,7 +75,7 @@ jobs:
         shell: bash
         run: |
           cd web
-          npm install --no-audit --no-fund
+          npm ci --no-audit --no-fund
           npm run test:run
           cd ..
           rm -rf web/public/data/fixture
@@ -99,3 +99,4 @@ jobs:
       - name: Deploy GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
