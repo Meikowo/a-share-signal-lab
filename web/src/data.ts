@@ -43,7 +43,7 @@ export type MarketRegimeEntry = {
 };
 export type RegimeOutcome = { sample_count:number; avg_net_return:number|null; avg_mae:number|null };
 export type MarketRegimeReport = {
-  schema_version:"1"; experiment_version:string; algorithm_version:string; latest_date:string|null;
+  schema_version:"2"; experiment_version:string; algorithm_version:string; latest_date:string|null;
   status:"available"|"unavailable";
   history:MarketRegimeEntry[];
   unavailable:{ as_of_date:string; sample_type:MarketRegimeEntry["sample_type"]; reason:string }[];
@@ -97,7 +97,7 @@ export async function loadMarketRegime(base = DEFAULT_DATA): Promise<MarketRegim
 
 function assertMarketRegimeReport(value: unknown): asserts value is MarketRegimeReport {
   const record = objectRecord(value);
-  if (record.schema_version !== "1" || typeof record.experiment_version !== "string" || typeof record.algorithm_version !== "string") invalidRegime();
+  if (record.schema_version !== "2" || typeof record.experiment_version !== "string" || typeof record.algorithm_version !== "string") invalidRegime();
   if (record.status !== "available" && record.status !== "unavailable") invalidRegime();
   if (record.latest_date !== null && typeof record.latest_date !== "string") invalidRegime();
   if (!Array.isArray(record.history) || !Array.isArray(record.unavailable) || !Array.isArray(record.outcome_comparison)) invalidRegime();
@@ -125,6 +125,9 @@ function assertMarketRegimeEntry(value: unknown) {
   assertRegimeComponent(components.benchmark_trend, "close_vs_ma20");
   assertRegimeComponent(components.breadth, "above_ma20_ratio");
   assertRegimeComponent(components.participation, "advancing_ratio");
+  const participation = objectRecord(components.participation);
+  for (const metric of ["total_market_amount","market_turnover_ratio_5_20","market_turnover_percentile_120","market_turnover_score","market_turnover_max_score","market_turnover_stress_capped"])
+    if (!isFiniteNumber(participation[metric])) invalidRegime();
   assertRegimeComponent(components.stress, "large_decline_ratio");
   if (!Array.isArray(row.adjusted_top10) || !Array.isArray(row.decisions)) invalidRegime();
   row.adjusted_top10.forEach(assertRegimeCandidate);

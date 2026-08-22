@@ -8,17 +8,23 @@ def test_export_script_uses_private_repository_and_writes_bundle(tmp_path, monke
         def __init__(self, database_url):
             captured["url"] = database_url
 
-    def export(repository, output_dir, algorithm_version):
+    class FakeMarketActivityClient:
+        pass
+
+    def export(repository, output_dir, algorithm_version, *, market_activity_client):
         captured["output"] = output_dir
         captured["version"] = algorithm_version
+        captured["market_activity_client"] = market_activity_client
         output_dir.mkdir()
         (output_dir / "manifest.json").write_text("{}", encoding="utf-8")
         return object()
 
     monkeypatch.setenv("ASSL_DATABASE_URL", "private")
     monkeypatch.setattr(script, "AsslRepository", FakeRepo)
+    monkeypatch.setattr(script, "SohuMarketActivityClient", FakeMarketActivityClient)
     monkeypatch.setattr(script, "export_public_bundle", export)
 
     assert script.main([str(tmp_path / "public")]) == 0
     assert captured["version"] == "macd-v1.1"
     assert captured["output"] == tmp_path / "public"
+    assert isinstance(captured["market_activity_client"], FakeMarketActivityClient)

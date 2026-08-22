@@ -1,6 +1,9 @@
+from dataclasses import replace
 from datetime import date, timedelta
 
-from assl.domain import Bar
+import pytest
+
+from assl.domain import Bar, MarketTurnover
 from assl.experiments.market_regime import (
     MarketRegimeInput,
     assess_market_regime,
@@ -29,6 +32,61 @@ def test_falling_benchmark_narrow_breadth_and_stress_classify_risk_off():
     assert assessment.score < 45
     assert assessment.components["breadth"]["above_ma20_ratio"] == 0.0
     assert assessment.components["stress"]["large_decline_ratio"] == 1.0
+
+
+def test_market_turnover_adds_up_to_ten_points_without_replacing_breadth():
+    active = assess_market_regime(
+        _market_input(
+            direction=1.0,
+            advancing=True,
+            active=True,
+            turnover_multiplier=1.50,
+        )
+    )
+    quiet = assess_market_regime(
+        _market_input(
+            direction=1.0,
+            advancing=True,
+            active=True,
+            turnover_multiplier=0.60,
+        )
+    )
+
+    active_participation = active.components["participation"]
+    quiet_participation = quiet.components["participation"]
+    assert active_participation["market_turnover_max_score"] == 10.0
+    assert active_participation["market_turnover_score"] > quiet_participation[
+        "market_turnover_score"
+    ]
+    assert active_participation["total_market_amount"] == 3_000_000_000_000.0
+    assert active.components["breadth"] == quiet.components["breadth"]
+
+
+def test_panic_selloff_caps_the_market_turnover_reward():
+    assessment = assess_market_regime(
+        _market_input(
+            direction=-1.0,
+            advancing=False,
+            active=True,
+            turnover_multiplier=1.50,
+        )
+    )
+
+    participation = assessment.components["participation"]
+    assert participation["market_turnover_stress_capped"] == 1.0
+    assert participation["market_turnover_score"] <= 4.0
+
+
+def test_market_turnover_requires_the_same_recent_calendar_as_the_benchmark():
+    market_input = _market_input(direction=1.0, advancing=True, active=True)
+    turnover_with_gap = tuple(
+        row
+        for index, row in enumerate(market_input.market_turnover)
+        if index != len(market_input.market_turnover) - 30
+    )
+
+    with pytest.raises(ValueError, match="calendar"):
+        assess_market_regime(replace(market_input, market_turnover=turnover_with_gap))
 
 
 def test_risk_off_adjustment_keeps_only_strong_confirmed_resonance():
@@ -103,6 +161,8 @@ def test_market_regime_ignores_future_bars():
             market_input.as_of_date,
             market_input.universe_symbols,
             histories,
+            market_input.sample_type,
+            market_input.market_turnover,
         )
     )
 
@@ -140,6 +200,7 @@ def test_outcome_comparison_separates_reconstruction_from_forward_shadow():
         forward.universe_symbols,
         forward.histories,
         "forward_shadow",
+        forward.market_turnover,
     )
     payloads = (
         {
@@ -215,6 +276,7 @@ def _market_input(
     advancing: bool,
     active: bool,
     day: date = date(2026, 8, 21),
+    turnover_multiplier: float = 1.0,
 ) -> MarketRegimeInput:
     symbols = tuple(f"6000{index:02d}" for index in range(1, 11))
     histories = {
@@ -234,7 +296,34 @@ def _market_input(
         final_jump=0.02 if direction > 0 else -0.08,
         active=active,
     )
-    return MarketRegimeInput(day, symbols, histories, "historical_reconstruction")
+    turnover = _market_turnover(day, turnover_multiplier)
+    return MarketRegimeInput(
+        day,
+        symbols,
+        histories,
+        "historical_reconstruction",
+        turnover,
+    )
+
+
+def _market_turnover(end: date, final_multiplier: float) -> tuple[MarketTurnover, ...]:
+    dates = []
+    cursor = end
+    while len(dates) < 130:
+        if cursor.weekday() < 5:
+            dates.append(cursor)
+        cursor -= timedelta(days=1)
+    dates.reverse()
+    totals = [2_000_000_000_000.0] * len(dates)
+    totals[-5:] = [2_000_000_000_000.0 * final_multiplier] * 5
+    return tuple(
+        MarketTurnover(
+            trade_day,
+            total / 2,
+            total / 2,
+        )
+        for trade_day, total in zip(dates, totals, strict=True)
+    )
 
 
 def _bars(
@@ -247,12 +336,12 @@ def _bars(
 ) -> tuple[Bar, ...]:
     dates = []
     cursor = end
-    while len(dates) < 70:
+    while len(dates) < 130:
         if cursor.weekday() < 5:
             dates.append(cursor)
         cursor -= timedelta(days=1)
     dates.reverse()
-    closes = [100 + direction * index for index in range(len(dates))]
+    closes = [200 + direction * index for index in range(len(dates))]
     closes[-1] = closes[-2] * (1 + final_jump)
     volumes = [1000.0] * len(dates)
     volumes[-1] = 1600.0 if active else 400.0

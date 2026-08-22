@@ -4,6 +4,7 @@ from datetime import UTC, date, datetime
 import pytest
 
 from assl.domain import Coverage, Grade
+from assl.experiments.market_regime import MarketRegimeInput
 from assl.publish.exporter import (
     ImmutableSnapshotError,
     export_public_bundle,
@@ -92,6 +93,35 @@ def test_export_bundle_keeps_baseline_available_when_regime_experiment_fails(tmp
     assert latest["as_of_date"] == "2026-08-11"
     assert experiment["status"] == "unavailable"
     assert experiment["history"] == []
+
+
+def test_export_bundle_requests_turnover_history_for_the_oldest_experiment(tmp_path):
+    repository = FakeSnapshotRepo()
+    oldest = date(2025, 8, 21)
+    latest = date(2026, 8, 21)
+    for day in (oldest, latest):
+        persist_snapshot(repository, object(), str(day), fixture_snapshot(day))
+    repository.market_regime_inputs = (
+        MarketRegimeInput(oldest, (), {}),
+        MarketRegimeInput(latest, (), {}),
+    )
+    captured = {}
+
+    class MarketActivityClient:
+        def fetch_daily(self, end, *, count):
+            captured["end"] = end
+            captured["count"] = count
+            return ()
+
+    export_public_bundle(
+        repository,
+        tmp_path,
+        "macd-v1",
+        market_activity_client=MarketActivityClient(),
+    )
+
+    assert captured["end"] == latest
+    assert captured["count"] >= (latest - oldest).days + 180
 
 
 def test_export_bundle_attaches_mature_outcomes_without_mutating_snapshot(tmp_path):

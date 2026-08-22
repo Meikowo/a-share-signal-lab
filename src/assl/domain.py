@@ -98,6 +98,22 @@ class Bar:
 
 
 @dataclass(frozen=True, slots=True)
+class MarketTurnover:
+    trade_date: date
+    shanghai_amount: float
+    shenzhen_amount: float
+
+    def __post_init__(self) -> None:
+        amounts = (self.shanghai_amount, self.shenzhen_amount)
+        if not all(math.isfinite(value) and value > 0 for value in amounts):
+            raise ValueError("market turnover amounts must be finite and positive")
+
+    @property
+    def total_amount(self) -> float:
+        return self.shanghai_amount + self.shenzhen_amount
+
+
+@dataclass(frozen=True, slots=True)
 class Divergence:
     kind: str
     confirmed: bool

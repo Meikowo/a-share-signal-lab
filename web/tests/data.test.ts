@@ -16,8 +16,28 @@ it("rejects a malformed market-regime entry before the UI renders it", async () 
     ok: true,
     headers: { get: () => "application/json" },
     json: () => Promise.resolve({
-      schema_version: "1",
+      schema_version: "2",
       history: [{ as_of_date: "2026-08-21", score: 42, state: "risk_off" }],
+      outcome_comparison: [],
+      methodology: { industry_diffusion: "pending" },
+    }),
+  }));
+
+  await expect(loadMarketRegime("/data")).rejects.toThrow(/格式/);
+});
+
+it("rejects the legacy market-regime schema instead of reading it as V1.1", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+    ok: true,
+    headers: { get: () => "application/json" },
+    json: () => Promise.resolve({
+      schema_version: "1",
+      experiment_version: "market-regime-v1",
+      algorithm_version: "macd-v1.1",
+      latest_date: null,
+      status: "available",
+      history: [],
+      unavailable: [],
       outcome_comparison: [],
       methodology: { industry_diffusion: "pending" },
     }),
@@ -47,8 +67,8 @@ it("bypasses browser and CDN caches for public data", async () => {
       ok: true,
       headers: { get: () => "application/json" },
       json: () => Promise.resolve({
-        schema_version: "1",
-        experiment_version: "market-regime-v1",
+        schema_version: "2",
+        experiment_version: "market-regime-v1.1",
         algorithm_version: "macd-v1.1",
         latest_date: null,
         status: "available",

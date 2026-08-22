@@ -417,7 +417,7 @@ class AsslRepository:
             symbols = tuple(member.instrument.symbol for member in members)
             first_day = min(row["as_of_date"] for row in version_rows)
             last_day = max(row["as_of_date"] for row in version_rows)
-            bar_limit = 65 + (last_day - first_day).days
+            bar_limit = 120 + (last_day - first_day).days
             histories = self.load_bars(
                 connection,
                 (*symbols, BENCHMARK_SYMBOL),

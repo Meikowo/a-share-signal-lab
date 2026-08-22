@@ -6,8 +6,8 @@ import snapshot from "../public/data/fixture/latest.json";
 import manifest from "../public/data/fixture/manifest.json";
 
 const marketRegime = {
-  schema_version: "1",
-  experiment_version: "market-regime-v1",
+  schema_version: "2",
+  experiment_version: "market-regime-v1.1",
   algorithm_version: "macd-v1.1",
   latest_date: "2026-08-11",
   status: "available",
@@ -23,7 +23,7 @@ const marketRegime = {
     components: {
       benchmark_trend: { score: 8, max_score: 30, close_vs_ma20: -0.03, close_vs_ma60: -0.08, ma20_slope_5d: -0.01, ma60_slope_5d: -0.005, realized_vol_20: 0.26 },
       breadth: { score: 12, max_score: 30, above_ma20_ratio: 0.3, above_ma60_ratio: 0.5 },
-      participation: { score: 10, max_score: 25, advancing_ratio: 0.3, active_volume_ratio: 0.5, median_volume_ratio_20: 0.8 },
+      participation: { score: 10, max_score: 25, advancing_ratio: 0.3, active_volume_ratio: 0.5, median_volume_ratio_20: 0.8, total_market_amount: 1880000000000, market_turnover_ratio_5_20: 1.08, market_turnover_percentile_120: 0.72, market_turnover_score: 7.1, market_turnover_max_score: 10, market_turnover_stress_capped: 0 },
       stress: { score: 12, max_score: 15, large_decline_ratio: 0.02, realized_vol_20: 0.26 },
     },
     policy: "暂停预测金叉晋级，仅保留强共振确认或底背离修复信号",
@@ -116,9 +116,10 @@ describe("ASSL dashboard", () => {
 
     expect(await screen.findByRole("heading", { name: "策略实验室" })).toBeVisible();
     expect(screen.getByText(/生产基线/)).toBeVisible();
-    expect(screen.getByText("市场环境与参与度 V1")).toBeVisible();
+    expect(screen.getByText("市场环境与参与度 V1.1")).toBeVisible();
     expect(screen.getByText("风险规避")).toBeVisible();
     expect(screen.getByText("42.0")).toBeVisible();
+    expect(screen.getByText(/两市成交额 1.88万亿/)).toBeVisible();
     expect(screen.getByText("暂停预测金叉晋级，仅保留强共振确认或底背离修复信号")).toBeVisible();
     expect(screen.getByText("强共振确认信号保留")).toBeVisible();
     expect(screen.getByText(/原始 2 · 调整后 1/)).toBeVisible();

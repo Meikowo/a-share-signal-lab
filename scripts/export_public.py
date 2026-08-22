@@ -6,6 +6,7 @@ from pathlib import Path
 
 from assl.config import Settings
 from assl.db import AsslRepository
+from assl.market.sohu import SohuMarketActivityClient
 from assl.publish.exporter import export_public_bundle
 
 
@@ -15,7 +16,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--algorithm-version", default="macd-v1.1")
     args = parser.parse_args(argv)
     repository = AsslRepository(Settings.from_env().database_url)
-    export_public_bundle(repository, args.output, args.algorithm_version)
+    export_public_bundle(
+        repository,
+        args.output,
+        args.algorithm_version,
+        market_activity_client=SohuMarketActivityClient(),
+    )
     return 0
 
 

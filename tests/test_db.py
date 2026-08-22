@@ -144,6 +144,7 @@ def test_market_regime_inputs_use_each_runs_historical_watchlist(monkeypatch):
         ),
     )
     assert len(load_calls) == 1
+    assert load_calls[0][2] == 121
     statement, params = connection.statements[0]
     assert "watchlist_version_id" in statement
     assert "execution_mode as sample_type" in statement.lower()

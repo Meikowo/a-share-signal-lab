@@ -4,7 +4,7 @@ import json
 import shutil
 from collections import defaultdict
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 from pathlib import Path
 from tempfile import mkdtemp
@@ -59,6 +59,7 @@ def export_public_bundle(
     algorithm_version: str,
     *,
     private_symbols: tuple[str, ...] = (),
+    market_activity_client=None,
 ) -> ExportManifest:
     payloads = attach_candidate_outcomes(
         repository.list_snapshot_payloads(algorithm_version),
@@ -83,7 +84,10 @@ def export_public_bundle(
         _write_json(temporary / "latest.json", sorted_payloads[-1])
         _write_json(temporary / "methodology.json", _methodology(algorithm_version))
         market_regime = _market_regime_report(
-            repository, tuple(sorted_payloads), algorithm_version
+            repository,
+            tuple(sorted_payloads),
+            algorithm_version,
+            market_activity_client,
         )
         _write_json(temporary / "experiments" / "market-regime.json", market_regime)
 
@@ -145,11 +149,27 @@ def _market_regime_report(
     repository,
     payloads: tuple[dict[str, object], ...],
     algorithm_version: str,
+    market_activity_client,
 ) -> dict[str, object]:
     try:
         inputs = repository.list_market_regime_inputs(
             algorithm_version, sessions=None
         )
+        if market_activity_client is not None:
+            latest_date = date.fromisoformat(str(payloads[-1]["as_of_date"]))
+            earliest_date = min(
+                (market_input.as_of_date for market_input in inputs),
+                default=latest_date,
+            )
+            turnover_count = max(180, (latest_date - earliest_date).days + 180)
+            turnover = market_activity_client.fetch_daily(
+                latest_date,
+                count=turnover_count,
+            )
+            inputs = tuple(
+                replace(market_input, market_turnover=turnover)
+                for market_input in inputs
+            )
         return build_market_regime_experiment(inputs, payloads, algorithm_version)
     except Exception:
         # The experiment is deliberately isolated: it must never block the

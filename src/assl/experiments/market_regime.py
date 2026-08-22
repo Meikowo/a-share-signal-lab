@@ -6,9 +6,9 @@ from datetime import date
 from statistics import fmean, median, pstdev
 from typing import Any
 
-from assl.domain import Bar
+from assl.domain import Bar, MarketTurnover
 
-EXPERIMENT_VERSION = "market-regime-v1"
+EXPERIMENT_VERSION = "market-regime-v1.1"
 BENCHMARK_SYMBOL = "000300"
 SAMPLE_TYPES = ("historical_reconstruction", "forward_shadow")
 
@@ -19,6 +19,7 @@ class MarketRegimeInput:
     universe_symbols: tuple[str, ...]
     histories: dict[str, tuple[Bar, ...]]
     sample_type: str = "historical_reconstruction"
+    market_turnover: tuple[MarketTurnover, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,10 +41,17 @@ def assess_market_regime(value: MarketRegimeInput) -> MarketRegimeAssessment:
     benchmark = _eligible_bars(
         value.histories.get(BENCHMARK_SYMBOL, ()), value.as_of_date
     )
-    if not benchmark:
-        raise ValueError("market-regime experiment requires 65 completed CSI 300 bars")
+    if not benchmark or len(benchmark) < 120:
+        raise ValueError("market-regime experiment requires 120 completed CSI 300 bars")
     if not eligible:
         raise ValueError("market-regime experiment has no eligible watchlist histories")
+    market_turnover = _eligible_market_turnover(value.market_turnover, value.as_of_date)
+    if not market_turnover:
+        raise ValueError("market-regime experiment requires 120 completed turnover sessions")
+    benchmark_calendar = tuple(bar.trade_date for bar in benchmark[-120:])
+    turnover_calendar = tuple(row.trade_date for row in market_turnover[-120:])
+    if turnover_calendar != benchmark_calendar:
+        raise ValueError("market turnover calendar does not match CSI 300")
 
     benchmark_closes = [bar.close for bar in benchmark]
     ma20 = fmean(benchmark_closes[-20:])
@@ -89,7 +97,21 @@ def assess_market_regime(value: MarketRegimeInput) -> MarketRegimeAssessment:
     large_decline_ratio = fmean(large_declines)
     median_volume_ratio = median(volume_ratios)
     breadth_score = 15 * above_ma20_ratio + 15 * above_ma60_ratio
-    participation_score = 12.5 * advancing_ratio + 12.5 * active_volume_ratio
+    turnover_amounts = [row.total_amount for row in market_turnover]
+    total_market_amount = turnover_amounts[-1]
+    turnover_ratio_5_20 = fmean(turnover_amounts[-5:]) / fmean(turnover_amounts[-20:])
+    turnover_percentile_120 = _average_percentile_rank(
+        turnover_amounts[-120:], total_market_amount
+    )
+    turnover_trend_health = _clamp((turnover_ratio_5_20 - 0.75) / 0.35)
+    market_turnover_score = 5 * turnover_trend_health + 5 * turnover_percentile_120
+    benchmark_day_return = benchmark_closes[-1] / benchmark_closes[-2] - 1
+    turnover_stress_capped = benchmark_day_return <= -0.01 and large_decline_ratio >= 0.03
+    if turnover_stress_capped:
+        market_turnover_score = min(market_turnover_score, 4.0)
+    participation_score = (
+        7.5 * advancing_ratio + 7.5 * active_volume_ratio + market_turnover_score
+    )
     volatility_health = 1 - _clamp((realized_vol_20 - 0.18) / 0.22)
     decline_health = 1 - _clamp(large_decline_ratio / 0.10)
     stress_score = 7.5 * volatility_health + 7.5 * decline_health
@@ -117,6 +139,12 @@ def assess_market_regime(value: MarketRegimeInput) -> MarketRegimeAssessment:
             "advancing_ratio": round(advancing_ratio, 6),
             "active_volume_ratio": round(active_volume_ratio, 6),
             "median_volume_ratio_20": round(median_volume_ratio, 6),
+            "total_market_amount": round(total_market_amount, 2),
+            "market_turnover_ratio_5_20": round(turnover_ratio_5_20, 6),
+            "market_turnover_percentile_120": round(turnover_percentile_120, 6),
+            "market_turnover_score": round(market_turnover_score, 1),
+            "market_turnover_max_score": 10.0,
+            "market_turnover_stress_capped": float(turnover_stress_capped),
         },
         "stress": {
             "score": round(stress_score, 1),
@@ -165,7 +193,7 @@ def build_market_regime_experiment(
     unavailable.sort(key=lambda row: row["as_of_date"])
     history = all_history[-22:]
     return {
-        "schema_version": "1",
+        "schema_version": "2",
         "experiment_version": EXPERIMENT_VERSION,
         "algorithm_version": algorithm_version,
         "status": "available" if all_history or not unavailable else "unavailable",
@@ -181,7 +209,7 @@ def unavailable_market_regime_report(
     algorithm_version: str,
 ) -> dict[str, object]:
     return {
-        "schema_version": "1",
+        "schema_version": "2",
         "experiment_version": EXPERIMENT_VERSION,
         "algorithm_version": algorithm_version,
         "status": "unavailable",
@@ -329,7 +357,13 @@ def _methodology() -> dict[str, object]:
             "participation": 25,
             "stress": 15,
         },
-        "industry_diffusion": "待稳定行业分类数据后加入，不计入V1评分",
+        "participation_weights": {
+            "advancing_ratio": 7.5,
+            "watchlist_active_volume": 7.5,
+            "total_market_turnover": 10,
+        },
+        "market_turnover_source": "搜狐证券上证指数与深证综指日成交额",
+        "industry_diffusion": "待稳定行业分类数据后加入，不计入当前版本评分",
         "disclaimer": "影子实验，仅比较研究优先级，不构成交易建议。",
     }
 
@@ -379,3 +413,23 @@ def _public_candidate(candidate: dict[str, Any]) -> dict[str, object]:
 
 def _clamp(value: float) -> float:
     return min(1.0, max(0.0, value))
+
+
+def _eligible_market_turnover(
+    rows: tuple[MarketTurnover, ...], as_of_date: date
+) -> tuple[MarketTurnover, ...]:
+    completed = tuple(
+        sorted(
+            (row for row in rows if row.trade_date <= as_of_date),
+            key=lambda item: item.trade_date,
+        )
+    )
+    if len(completed) < 120 or completed[-1].trade_date != as_of_date:
+        return ()
+    return completed
+
+
+def _average_percentile_rank(values: list[float], current: float) -> float:
+    below = sum(value < current for value in values)
+    equal = sum(value == current for value in values)
+    return (below + 0.5 * equal) / len(values)

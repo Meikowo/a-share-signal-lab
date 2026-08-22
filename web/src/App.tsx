@@ -74,7 +74,7 @@ function StrategyLab({snapshot}:{snapshot:Snapshot}) {
   ];
   return <div className="content"><PageHeader eyebrow="STRATEGY LAB" title="策略实验室"><div className="date-pill"><span/>独立影子运行</div></PageHeader>
     <section className="lab-baseline"><div><span className="eyebrow">PRODUCTION BASELINE</span><h2>MACD 仍是生产基线</h2><p>{snapshot.algorithm_version} 继续负责今日候选。实验策略先独立记录、独立回测，不会自动混入今日 Top 10。</p></div><span className="status-chip live">生产中</span></section>
-    <section className="market-lab"><div className="market-lab-head"><div><span className="eyebrow">EXPERIMENT 01 · SHADOW RUN</span><h2>市场环境与参与度 V1</h2><p>用沪深300趋势与自选池聚合宽度、参与度和压力判断信号可信度；完整自选池不会公开。</p></div>{report&&report.history.length>0&&<label>观察日期<select aria-label="市场环境观察日期" value={entry?.as_of_date??""} onChange={event=>setSelectedDate(event.target.value)}>{report.history.slice().reverse().map(row=><option key={row.as_of_date}>{row.as_of_date}</option>)}</select></label>}</div>
+    <section className="market-lab"><div className="market-lab-head"><div><span className="eyebrow">EXPERIMENT 01 · SHADOW RUN</span><h2>市场环境与参与度 V1.1</h2><p>用沪深300趋势、两市总成交额与自选池聚合宽度、参与度和压力判断信号可信度；完整自选池不会公开。</p></div>{report&&report.history.length>0&&<label>观察日期<select aria-label="市场环境观察日期" value={entry?.as_of_date??""} onChange={event=>setSelectedDate(event.target.value)}>{report.history.slice().reverse().map(row=><option key={row.as_of_date}>{row.as_of_date}</option>)}</select></label>}</div>
       {experimentError?<div className="experiment-empty">{experimentError}</div>:!report?<div className="experiment-empty">正在读取实验结果…</div>:report.status==="unavailable"?<div className="experiment-empty">市场环境实验暂时不可用，MACD 主榜仍正常更新。</div>:!entry?<div className="experiment-empty">历史样本尚未生成，下一次数据导出后自动补充。</div>:<MarketRegimePanel entry={entry} report={report}/>}
     </section>
     <div className="lab-heading"><div><span className="eyebrow">RESEARCH QUEUE</span><h2>后续策略研究队列</h2></div><p>先证明增量价值，再讨论合并权重。</p></div>
@@ -88,7 +88,7 @@ function MarketRegimePanel({entry,report}:{entry:MarketRegimeEntry,report:Market
   const components=[
     ["指数趋势",entry.components.benchmark_trend,`沪深300相对MA20 ${signedPct(entry.components.benchmark_trend.close_vs_ma20)}`],
     ["市场宽度",entry.components.breadth,`MA20之上 ${pct(entry.components.breadth.above_ma20_ratio)}`],
-    ["参与活跃",entry.components.participation,`上涨比例 ${pct(entry.components.participation.advancing_ratio)}`],
+    ["参与活跃",entry.components.participation,`两市成交额 ${trillion(entry.components.participation.total_market_amount)} · 5/20 ${entry.components.participation.market_turnover_ratio_5_20.toFixed(2)}`],
     ["下跌压力",entry.components.stress,`大跌比例 ${pct(entry.components.stress.large_decline_ratio)}`],
   ] as const;
   return <><div className={`regime-summary ${entry.state}`}><div className="regime-score"><strong>{entry.score.toFixed(1)}</strong><span>市场温度 / 100</span></div><div><span className="status-chip">{stateLabel}</span><h3>{entry.policy}</h3><p>原始 {entry.baseline_top10_count} · 调整后 {entry.adjusted_top10.length}　｜　聚合覆盖 {entry.covered_count} / {entry.universe_count}　｜　{sampleTypeName(entry.sample_type)}</p></div></div>
@@ -104,4 +104,5 @@ function ErrorState({message}:{message:string}){return <div className="state"><b
 function fmt(v:number|null){return v==null||!Number.isFinite(v)?"—":v.toFixed(3)}
 function pct(v:number){return Number.isFinite(v)?`${(v*100).toFixed(1)}%`:"—"}
 function signedPct(v:number){return Number.isFinite(v)?`${v>0?"+":""}${(v*100).toFixed(1)}%`:"—"}
+function trillion(v:number){return Number.isFinite(v)?`${(v/1_000_000_000_000).toFixed(2)}万亿`:"—"}
 function signalName(c:Candidate){return c.signal_type==="confirmed_trend"?"已确认金叉":c.signal_type==="bottom_divergence"?"底背离修复":c.bucket==="p1"?"P1 临界金叉":c.bucket==="p2"?"P2 金叉酝酿":"技术面候选"}
