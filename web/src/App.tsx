@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Candidate, CandidateOutcome, Manifest, Snapshot, loadManifest, loadSnapshot } from "./data";
+import { Candidate, CandidateOutcome, Manifest, MarketRegimeEntry, MarketRegimeReport, Snapshot, loadManifest, loadMarketRegime, loadSnapshot } from "./data";
 
 type Route = "today" | "history" | "backtest" | "lab" | "method";
 const NAV: [Route,string,string][] = [["today","今日信号","⌁"],["history","历史记录","◷"],["backtest","策略回测","↗"],["lab","策略实验室","◎"],["method","方法说明","◇"]];
@@ -62,20 +62,43 @@ function Backtest({snapshot}:{snapshot:Snapshot}) {
   return <div className="content"><PageHeader eyebrow="FORWARD OUTCOMES" title="候选效果追踪"/><section className="plain-card"><div className="section-head"><div><h2>前瞻观察，不是回填胜率</h2><p>信号次日开盘进入观察，固定 1 / 5 / 10 / 20 个交易日收盘评估；绝对收益已扣除买卖各 10bp 成本。</p></div><div className="filters">{[["all","全部"],["top10","Top10"],["p1","P1"],["p2","P2"]].map(([value,label])=><button key={value} className={bucket===value?"selected":""} onClick={()=>setBucket(value as typeof bucket)}>{label}</button>)}</div></div><div className="outcome-table"><div><b>观察窗口</b><b>成熟样本</b><b>胜率</b><b>平均绝对收益</b><b>平均最大回撤</b></div>{[1,5,10,20].map(h=>{const row=byHorizon.get(h);return <div key={h}><span>{h} 日</span><span>{row?.sample_count??0}</span><span className={!row||row.sample_count<30?"muted":""}>{row?pct(row.win_rate):"样本不足"}</span><span>{row?pct(row.avg_net_return):"—"}</span><span>{row?.avg_mae==null?"—":pct(Math.min(row.avg_mae,0))}</span></div>})}</div>{mature<30&&<div className="empty-chart"><span>⌁</span><b>等待前瞻样本成熟</b><p>至少 30 个成熟样本后，胜率才具有初步观察价值；当前分组已形成 {mature} 个“窗口样本”。</p></div>}</section></div>
 }
 function StrategyLab({snapshot}:{snapshot:Snapshot}) {
+  const [report,setReport]=useState<MarketRegimeReport|null>(null);
+  const [selectedDate,setSelectedDate]=useState("");
+  const [experimentError,setExperimentError]=useState("");
+  useEffect(()=>{loadMarketRegime().then(value=>{setReport(value);setSelectedDate(value.latest_date??value.history.at(-1)?.as_of_date??"")}).catch(error=>setExperimentError(String(error.message||error)))},[]);
+  const entry=report?.history.find(row=>row.as_of_date===selectedDate)??report?.history.at(-1);
   const experiments = [
-    ["01", "市场环境与参与度", "宽度、成交活跃度、波动率与行业扩散", "准备实验"],
     ["02", "行业与个股相对强度", "比较行业对宽基、个股对行业的 20 / 60 日强弱", "准备实验"],
     ["03", "上升趋势回撤修复", "中期趋势未破坏、缩量回撤后的重新确认", "准备实验"],
     ["04", "基本面证据叠加", "以有时间戳的研究证据调整优先级，不做简单好坏二分", "研究设计"],
   ];
   return <div className="content"><PageHeader eyebrow="STRATEGY LAB" title="策略实验室"><div className="date-pill"><span/>独立影子运行</div></PageHeader>
     <section className="lab-baseline"><div><span className="eyebrow">PRODUCTION BASELINE</span><h2>MACD 仍是生产基线</h2><p>{snapshot.algorithm_version} 继续负责今日候选。实验策略先独立记录、独立回测，不会自动混入今日 Top 10。</p></div><span className="status-chip live">生产中</span></section>
-    <div className="lab-heading"><div><span className="eyebrow">RESEARCH QUEUE</span><h2>升级策略研究队列</h2></div><p>先证明增量价值，再讨论合并权重。</p></div>
+    <section className="market-lab"><div className="market-lab-head"><div><span className="eyebrow">EXPERIMENT 01 · SHADOW RUN</span><h2>市场环境与参与度 V1</h2><p>用沪深300趋势与自选池聚合宽度、参与度和压力判断信号可信度；完整自选池不会公开。</p></div>{report&&report.history.length>0&&<label>观察日期<select aria-label="市场环境观察日期" value={entry?.as_of_date??""} onChange={event=>setSelectedDate(event.target.value)}>{report.history.slice().reverse().map(row=><option key={row.as_of_date}>{row.as_of_date}</option>)}</select></label>}</div>
+      {experimentError?<div className="experiment-empty">{experimentError}</div>:!report?<div className="experiment-empty">正在读取实验结果…</div>:report.status==="unavailable"?<div className="experiment-empty">市场环境实验暂时不可用，MACD 主榜仍正常更新。</div>:!entry?<div className="experiment-empty">历史样本尚未生成，下一次数据导出后自动补充。</div>:<MarketRegimePanel entry={entry} report={report}/>}
+    </section>
+    <div className="lab-heading"><div><span className="eyebrow">RESEARCH QUEUE</span><h2>后续策略研究队列</h2></div><p>先证明增量价值，再讨论合并权重。</p></div>
     <section className="experiment-grid">{experiments.map(([number,title,description,status])=><article key={number}><div><i>{number}</i><span className="status-chip">{status}</span></div><h2>{title}</h2><p>{description}</p><footer>观察 T+1 / T+5 / T+10 / T+20、最大回撤与样本覆盖</footer></article>)}</section>
     <section className="lab-rule"><b>晋级规则</b><p>新策略至少经过历史重构和前瞻影子样本，在不同市场环境下相对 MACD 基线仍有稳定增益，才进入正式综合排名。</p></section>
   </div>
 }
-function Method({snapshot}:{snapshot:Snapshot}) { return <div className="content"><PageHeader eyebrow="METHODOLOGY" title="方法与边界"/><section className="method-grid"><article><i>01</i><h2>三条信号通道</h2><p>确认金叉与趋势启动、因果底背离修复、P1/P2 条件性预测金叉。顶背离只作风险扣分。</p></article><article><i>02</i><h2>固定参数</h2><p>MACD 12 / 26 / 9；均线 MA20 / MA30 / MA60；前复权日线，明确收盘截止日。</p></article><article><i>03</i><h2>基本面叠加</h2><p>量化负责择时，已有主线与基本面研究负责排序优先级。内部标签不会出现在公开网站。</p></article><article><i>04</i><h2>效果验证</h2><p>T+1 开盘、双边各 10bp、沪深300基准，固定周期与信号退出分别统计。</p></article></section><section className="plain-card method-note"><h2>数据与限制</h2><p>数据源：{snapshot.source}。当前算法：{snapshot.algorithm_version}。覆盖不足 98% 时不会发布新候选。技术信号可能失效，市场制度、停牌、涨跌停和流动性都会影响实际可交易性。</p></section></div> }
+function MarketRegimePanel({entry,report}:{entry:MarketRegimeEntry,report:MarketRegimeReport}) {
+  const stateLabel=entry.state==="risk_on"?"风险偏好":entry.state==="neutral"?"中性震荡":"风险规避";
+  const hasOutcomes=report.outcome_comparison.some(row=>row.baseline.sample_count>0||row.adjusted.sample_count>0);
+  const components=[
+    ["指数趋势",entry.components.benchmark_trend,`沪深300相对MA20 ${signedPct(entry.components.benchmark_trend.close_vs_ma20)}`],
+    ["市场宽度",entry.components.breadth,`MA20之上 ${pct(entry.components.breadth.above_ma20_ratio)}`],
+    ["参与活跃",entry.components.participation,`上涨比例 ${pct(entry.components.participation.advancing_ratio)}`],
+    ["下跌压力",entry.components.stress,`大跌比例 ${pct(entry.components.stress.large_decline_ratio)}`],
+  ] as const;
+  return <><div className={`regime-summary ${entry.state}`}><div className="regime-score"><strong>{entry.score.toFixed(1)}</strong><span>市场温度 / 100</span></div><div><span className="status-chip">{stateLabel}</span><h3>{entry.policy}</h3><p>原始 {entry.baseline_top10_count} · 调整后 {entry.adjusted_top10.length}　｜　聚合覆盖 {entry.covered_count} / {entry.universe_count}　｜　{sampleTypeName(entry.sample_type)}</p></div></div>
+    <div className="regime-components">{components.map(([name,component,note])=><article key={name}><div><b>{name}</b><strong>{component.score.toFixed(1)}<small> / {component.max_score}</small></strong></div><span>{note}</span></article>)}</div>
+    <div className="lab-two-column"><section><div className="section-head"><div><span className="eyebrow">ADJUSTMENT LEDGER</span><h2>当日信号处理</h2></div></div><div className="decision-list">{entry.decisions.map(row=><article key={`${row.original_bucket}-${row.symbol}`}><div><b>{row.name}<small>{row.symbol} · {row.grade}</small></b><em className={`decision-${row.action}`}>{actionName(row.action)}</em></div><p>{row.reason}</p></article>)}</div></section><section><div className="section-head"><div><span className="eyebrow">BASELINE VS FILTERED</span><h2>历史效果对照</h2></div></div><div className="regime-outcomes"><div><b>样本</b><b>窗口</b><b>样本：原始 / 调整</b><b>平均收益：原始 / 调整</b><b>最大回撤：原始 / 调整</b></div>{report.outcome_comparison.map(row=><div key={`${row.sample_type}-${row.horizon_days}`}><span>{sampleTypeName(row.sample_type)}</span><span>T+{row.horizon_days}</span><span>{row.baseline.sample_count} / {row.adjusted.sample_count}</span><span>{optionalPair(row.baseline.avg_net_return,row.adjusted.avg_net_return)}</span><span>{optionalPair(row.baseline.avg_mae,row.adjusted.avg_mae)}</span></div>)}</div>{!hasOutcomes&&<div className="experiment-empty compact">等待成熟的前瞻样本</div>}<p className="experiment-note">历史重构可能包含自选池存续偏差；真实前瞻影子样本单独统计。{report.methodology.industry_diffusion}</p></section></div></>
+}
+function actionName(action:string){return action==="keep"?"保留":action==="downgrade"?"降级":action==="monitor"?"跟踪":"观察"}
+function sampleTypeName(value:MarketRegimeEntry["sample_type"]){return value==="forward_shadow"?"真实前瞻":"历史重构"}
+function optionalPair(left:number|null,right:number|null){return `${left==null?"—":signedPct(left)} / ${right==null?"—":signedPct(right)}`}
+function Method({snapshot}:{snapshot:Snapshot}) { return <div className="content"><PageHeader eyebrow="METHODOLOGY" title="方法与边界"/><section className="method-grid"><article><i>01</i><h2>三条信号通道</h2><p>确认金叉与趋势启动、因果底背离修复、P1/P2 条件性预测金叉。顶背离只作风险扣分。</p></article><article><i>02</i><h2>固定参数</h2><p>MACD 12 / 26 / 9；均线 MA20 / MA30 / MA60；前复权日线，明确收盘截止日。</p></article><article><i>03</i><h2>基本面叠加</h2><p>量化负责择时，已有主线与基本面研究负责排序优先级。内部标签不会出现在公开网站。</p></article><article><i>04</i><h2>效果验证</h2><p>T+1 开盘、双边各 10bp、沪深300基准，固定周期与信号退出分别统计。</p></article></section><section className="plain-card method-note"><h2>数据与限制</h2><p>数据源：{snapshot.source}。当前算法：{snapshot.algorithm_version}。覆盖不足 97% 时不会发布新候选。技术信号可能失效，市场制度、停牌、涨跌停和流动性都会影响实际可交易性。</p></section></div> }
 function Loading(){return <div className="state"><span className="spinner"/><h2>正在读取最新信号</h2><p>请稍候</p></div>}
 function ErrorState({message}:{message:string}){return <div className="state"><b>!</b><h2>暂时无法读取公开数据</h2><p>{message}</p><a href="#/method">查看方法说明</a></div>}
 function fmt(v:number|null){return v==null||!Number.isFinite(v)?"—":v.toFixed(3)}

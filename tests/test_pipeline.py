@@ -40,6 +40,7 @@ def test_run_uses_last_completed_date_and_is_idempotent(monkeypatch):
     assert repository.run_count == 1
     assert market.calls == 1
     assert len(repository.snapshots) == 1
+    assert repository.run_modes == ["forward_shadow"]
 
 
 def test_automatic_online_run_fetches_when_cached_run_is_older_than_completed_session(
@@ -124,6 +125,7 @@ def test_failed_low_coverage_run_can_retry_after_missing_bars_arrive(monkeypatch
     assert second.run_id == first.run_id
     assert market.calls == 2
     assert repository.run_count == 1
+    assert repository.run_modes == ["forward_shadow", "forward_shadow"]
 
 
 def test_offline_run_never_calls_market(monkeypatch):

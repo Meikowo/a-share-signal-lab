@@ -10,6 +10,10 @@ from pathlib import Path
 from tempfile import mkdtemp
 
 from assl.domain import canonical_json, content_sha256
+from assl.experiments.market_regime import (
+    build_market_regime_experiment,
+    unavailable_market_regime_report,
+)
 from assl.publish.privacy import scan_public_tree
 from assl.publish.schema import PublicSnapshot
 
@@ -78,6 +82,10 @@ def export_public_bundle(
         _write_json(temporary / "history" / "index.json", list(history_dates))
         _write_json(temporary / "latest.json", sorted_payloads[-1])
         _write_json(temporary / "methodology.json", _methodology(algorithm_version))
+        market_regime = _market_regime_report(
+            repository, tuple(sorted_payloads), algorithm_version
+        )
+        _write_json(temporary / "experiments" / "market-regime.json", market_regime)
 
         files = sorted(path for path in temporary.rglob("*") if path.is_file())
         file_hashes = {
@@ -131,6 +139,22 @@ def export_public_bundle(
     finally:
         if temporary.exists():
             shutil.rmtree(temporary)
+
+
+def _market_regime_report(
+    repository,
+    payloads: tuple[dict[str, object], ...],
+    algorithm_version: str,
+) -> dict[str, object]:
+    try:
+        inputs = repository.list_market_regime_inputs(
+            algorithm_version, sessions=None
+        )
+        return build_market_regime_experiment(inputs, payloads, algorithm_version)
+    except Exception:
+        # The experiment is deliberately isolated: it must never block the
+        # production MACD snapshot from being published.
+        return unavailable_market_regime_report(algorithm_version)
 
 
 def attach_candidate_outcomes(

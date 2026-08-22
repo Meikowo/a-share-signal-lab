@@ -25,6 +25,7 @@ class FakeRepository:
         self.finished = []
         self.outcome_candidates = ()
         self.outcomes = []
+        self.run_modes = []
 
     @contextmanager
     def transaction(self):
@@ -42,7 +43,8 @@ class FakeRepository:
     def find_run(self, connection, key):
         return self.runs.get(key)
 
-    def start_run(self, connection, key, universe_count):
+    def start_run(self, connection, key, universe_count, execution_mode="forward_shadow"):
+        self.run_modes.append(execution_mode)
         if key in self.runs:
             return self.runs[key].run_id
         run_id = uuid4()

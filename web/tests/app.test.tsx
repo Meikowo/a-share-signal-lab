@@ -5,6 +5,39 @@ import App from "../src/App";
 import snapshot from "../public/data/fixture/latest.json";
 import manifest from "../public/data/fixture/manifest.json";
 
+const marketRegime = {
+  schema_version: "1",
+  experiment_version: "market-regime-v1",
+  algorithm_version: "macd-v1.1",
+  latest_date: "2026-08-11",
+  status: "available",
+  history: [{
+    as_of_date: "2026-08-11", score: 42, state: "risk_off",
+    sample_type: "historical_reconstruction",
+    universe_count: 839, covered_count: 819, baseline_top10_count: 2,
+    adjusted_top10: [{ symbol: "600001", name: "强信号股", grade: "强S", signal_type: "confirmed_trend" }],
+    decisions: [
+      { symbol: "600001", name: "强信号股", grade: "强S", signal_type: "confirmed_trend", original_bucket: "top10", action: "keep", reason: "强共振确认信号保留" },
+      { symbol: "600002", name: "预测信号股", grade: "A", signal_type: "predictive_cross", original_bucket: "top10", action: "observation", reason: "风险规避期仅作观察" },
+    ],
+    components: {
+      benchmark_trend: { score: 8, max_score: 30, close_vs_ma20: -0.03, close_vs_ma60: -0.08, ma20_slope_5d: -0.01, ma60_slope_5d: -0.005, realized_vol_20: 0.26 },
+      breadth: { score: 12, max_score: 30, above_ma20_ratio: 0.3, above_ma60_ratio: 0.5 },
+      participation: { score: 10, max_score: 25, advancing_ratio: 0.3, active_volume_ratio: 0.5, median_volume_ratio_20: 0.8 },
+      stress: { score: 12, max_score: 15, large_decline_ratio: 0.02, realized_vol_20: 0.26 },
+    },
+    policy: "暂停预测金叉晋级，仅保留强共振确认或底背离修复信号",
+  }],
+  outcome_comparison: [{
+    sample_type: "historical_reconstruction",
+    horizon_days: 5,
+    baseline: { sample_count: 32, avg_net_return: -0.02, avg_mae: -0.08 },
+    adjusted: { sample_count: 16, avg_net_return: 0.01, avg_mae: -0.04 },
+  }],
+  unavailable: [],
+  methodology: { industry_diffusion: "待稳定行业分类数据后加入，不计入V1评分" },
+};
+
 describe("ASSL dashboard", () => {
   beforeEach(() => {
     location.hash = "#/today";
@@ -37,6 +70,13 @@ describe("ASSL dashboard", () => {
     expect(screen.queryByText("数据覆盖率")).not.toBeInTheDocument();
   });
 
+  it("shows the configured 97 percent publication threshold", async () => {
+    location.hash = "#/method";
+    render(<App />);
+
+    expect(await screen.findByText(/覆盖不足 97% 时不会发布新候选/)).toBeVisible();
+  });
+
   it("renders matured forward outcome statistics", async () => {
     location.hash = "#/backtest";
     const withOutcomes = {
@@ -66,12 +106,25 @@ describe("ASSL dashboard", () => {
 
   it("keeps experimental strategies isolated in the strategy lab", async () => {
     location.hash = "#/lab";
+    vi.stubGlobal("fetch", vi.fn((url: string) => Promise.resolve({
+      ok: true,
+      headers: { get: () => "application/json" },
+      json: () => Promise.resolve(url.includes("market-regime") ? marketRegime : url.includes("manifest") ? manifest : snapshot),
+    })));
 
     render(<App />);
 
     expect(await screen.findByRole("heading", { name: "策略实验室" })).toBeVisible();
     expect(screen.getByText(/生产基线/)).toBeVisible();
-    expect(screen.getByText("市场环境与参与度")).toBeVisible();
+    expect(screen.getByText("市场环境与参与度 V1")).toBeVisible();
+    expect(screen.getByText("风险规避")).toBeVisible();
+    expect(screen.getByText("42.0")).toBeVisible();
+    expect(screen.getByText("暂停预测金叉晋级，仅保留强共振确认或底背离修复信号")).toBeVisible();
+    expect(screen.getByText("强共振确认信号保留")).toBeVisible();
+    expect(screen.getByText(/原始 2 · 调整后 1/)).toBeVisible();
+    expect(screen.getAllByText("历史重构").length).toBeGreaterThan(0);
+    expect(screen.getByText(/自选池存续偏差/)).toBeVisible();
+    expect(screen.getByText("-2.0% / +1.0%")).toBeVisible();
     expect(screen.getByText("行业与个股相对强度")).toBeVisible();
     expect(screen.getByText("上升趋势回撤修复")).toBeVisible();
     expect(screen.getByText("基本面证据叠加")).toBeVisible();

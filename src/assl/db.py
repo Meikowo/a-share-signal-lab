@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections import defaultdict
 from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import asdict
@@ -24,10 +25,12 @@ from assl.domain import (
     WatchlistMember,
     WatchlistVersion,
 )
+from assl.experiments.market_regime import BENCHMARK_SYMBOL, MarketRegimeInput
 from assl.outcomes import CandidateOutcome, OutcomeCandidateRef
 from assl.publish.schema import PublicSnapshot
 
 _DATABASE_URL = re.compile(r"postgres(?:ql)?://\S+", re.IGNORECASE)
+_EXECUTION_MODES = {"historical_reconstruction", "forward_shadow"}
 
 
 def _sanitize_error(value: str) -> str:
@@ -369,6 +372,67 @@ class AsslRepository:
         ).fetchall()
         return tuple(row["payload"] for row in rows)
 
+    def list_market_regime_inputs(
+        self,
+        algorithm_version: str,
+        *,
+        sessions: int | None = 22,
+        connection: Connection | None = None,
+    ) -> tuple[MarketRegimeInput, ...]:
+        if sessions is not None and sessions < 1:
+            raise ValueError("market-regime session count must be positive")
+        if connection is None:
+            with self.transaction() as opened:
+                return self.list_market_regime_inputs(
+                    algorithm_version,
+                    sessions=sessions,
+                    connection=opened,
+                )
+        rows = connection.execute(
+            """
+            with recent as (
+                select run.as_of_date,
+                       run.watchlist_version_id,
+                       run.execution_mode as sample_type
+                from assl_private.screening_runs run
+                join assl_private.published_snapshots snapshot on snapshot.run_id = run.id
+                where run.algorithm_version_id = %s
+                  and run.status = 'succeeded'
+                order by run.as_of_date desc
+                limit %s
+            )
+            select as_of_date, watchlist_version_id, sample_type
+            from recent
+            order by as_of_date
+            """,
+            (algorithm_version, sessions),
+        ).fetchall()
+        rows_by_version: dict[UUID, list[dict]] = defaultdict(list)
+        for row in rows:
+            rows_by_version[row["watchlist_version_id"]].append(row)
+
+        inputs_by_date: dict[date, MarketRegimeInput] = {}
+        for version_id, version_rows in rows_by_version.items():
+            members = self.load_watchlist_members(connection, version_id)
+            symbols = tuple(member.instrument.symbol for member in members)
+            first_day = min(row["as_of_date"] for row in version_rows)
+            last_day = max(row["as_of_date"] for row in version_rows)
+            bar_limit = 65 + (last_day - first_day).days
+            histories = self.load_bars(
+                connection,
+                (*symbols, BENCHMARK_SYMBOL),
+                last_day,
+                limit=bar_limit,
+            )
+            for row in version_rows:
+                inputs_by_date[row["as_of_date"]] = MarketRegimeInput(
+                    as_of_date=row["as_of_date"],
+                    universe_symbols=symbols,
+                    histories=histories,
+                    sample_type=row["sample_type"],
+                )
+        return tuple(inputs_by_date[day] for day in sorted(inputs_by_date))
+
     def list_public_candidate_outcomes(
         self,
         algorithm_version: str,
@@ -478,16 +542,20 @@ class AsslRepository:
         connection: Connection,
         key: RunKey,
         universe_count: int,
+        execution_mode: str = "forward_shadow",
     ) -> UUID:
+        if execution_mode not in _EXECUTION_MODES:
+            raise ValueError("unsupported screening execution mode")
         proposed_id = uuid4()
         row = connection.execute(
             """
             insert into assl_private.screening_runs
                 (id, as_of_date, watchlist_version_id, algorithm_version_id,
-                 status, universe_count)
-            values (%s, %s, %s, %s, 'running', %s)
+                 status, universe_count, execution_mode)
+            values (%s, %s, %s, %s, 'running', %s, %s)
             on conflict (as_of_date, watchlist_version_id, algorithm_version_id)
-            do nothing
+            do update set execution_mode = excluded.execution_mode
+            where screening_runs.status = 'failed'
             returning id
             """,
             (
@@ -496,6 +564,7 @@ class AsslRepository:
                 key.watchlist_version_id,
                 key.algorithm_version_id,
                 universe_count,
+                execution_mode,
             ),
         ).fetchone()
         if row is not None:

@@ -18,6 +18,7 @@ class FakeSnapshotRepo:
         self.snapshots = {}
         self.public_outcomes = ()
         self.public_summary = ()
+        self.market_regime_inputs = ()
 
     def get_snapshot_hash(self, connection, as_of_date, algorithm_version):
         row = self.snapshots.get((as_of_date.isoformat(), algorithm_version))
@@ -39,6 +40,10 @@ class FakeSnapshotRepo:
 
     def list_public_outcome_summary(self, algorithm_version):
         return self.public_summary
+
+    def list_market_regime_inputs(self, algorithm_version, sessions=22):
+        assert sessions is None
+        return self.market_regime_inputs
 
 
 def test_published_snapshot_cannot_be_changed():
@@ -66,6 +71,27 @@ def test_export_bundle_latest_points_to_newest_success(tmp_path):
     assert manifest.history_dates == ("2026-08-10", "2026-08-11")
     assert (tmp_path / "history" / "2026-08-10.json").exists()
     assert (tmp_path / "methodology.json").exists()
+    assert (tmp_path / "experiments" / "market-regime.json").exists()
+
+
+def test_export_bundle_keeps_baseline_available_when_regime_experiment_fails(tmp_path):
+    class BrokenExperimentRepo(FakeSnapshotRepo):
+        def list_market_regime_inputs(self, algorithm_version, sessions=22):
+            raise RuntimeError("experiment query failed")
+
+    repository = BrokenExperimentRepo()
+    snapshot = fixture_snapshot(date(2026, 8, 11))
+    persist_snapshot(repository, object(), "run-1", snapshot)
+
+    export_public_bundle(repository, tmp_path, "macd-v1")
+
+    latest = json.loads((tmp_path / "latest.json").read_text(encoding="utf-8"))
+    experiment = json.loads(
+        (tmp_path / "experiments" / "market-regime.json").read_text(encoding="utf-8")
+    )
+    assert latest["as_of_date"] == "2026-08-11"
+    assert experiment["status"] == "unavailable"
+    assert experiment["history"] == []
 
 
 def test_export_bundle_attaches_mature_outcomes_without_mutating_snapshot(tmp_path):

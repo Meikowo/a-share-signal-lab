@@ -121,7 +121,13 @@ def _run_daily(args: argparse.Namespace) -> int:
         TencentClient(),
         AlgorithmConfig.macd_v1(),
     )
-    summary = pipeline.run(args.as_of, offline=args.offline)
+    summary = pipeline.run(
+        args.as_of,
+        offline=args.offline,
+        execution_mode=(
+            "historical_reconstruction" if args.as_of else "forward_shadow"
+        ),
+    )
     print(
         f"status={summary.status} as_of={summary.as_of_date} "
         f"coverage={summary.coverage.covered_count}/"
@@ -145,7 +151,11 @@ def _backfill(args: argparse.Namespace) -> int:
 
     completed = 0
     for day in dates:
-        summary = pipeline.run(day, offline=True)
+        summary = pipeline.run(
+            day,
+            offline=True,
+            execution_mode="historical_reconstruction",
+        )
         if summary.status not in {"succeeded", "skipped"}:
             print(f"completed={completed}/{len(dates)} failed_as_of={day}")
             return 1

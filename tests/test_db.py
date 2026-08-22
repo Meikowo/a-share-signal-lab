@@ -19,6 +19,7 @@ from assl.domain import (
     WatchlistMember,
     WatchlistVersion,
 )
+from assl.experiments.market_regime import MarketRegimeInput
 from assl.outcomes import CandidateOutcome
 
 
@@ -80,6 +81,74 @@ class ConnectionContext:
 
     def __exit__(self, exc_type, exc_value, traceback):
         return False
+
+
+def test_market_regime_inputs_use_each_runs_historical_watchlist(monkeypatch):
+    version_id = UUID("00000000-0000-0000-0000-000000000081")
+    day = date(2026, 8, 21)
+    prior_day = date(2026, 8, 20)
+    connection = RecordingConnection(
+        [
+            Result(
+                rows=[
+                    {
+                        "as_of_date": prior_day,
+                        "watchlist_version_id": version_id,
+                        "sample_type": "historical_reconstruction",
+                    },
+                    {
+                        "as_of_date": day,
+                        "watchlist_version_id": version_id,
+                        "sample_type": "forward_shadow",
+                    },
+                ]
+            )
+        ]
+    )
+    repository = AsslRepository("unused")
+    member = WatchlistMember(Instrument.from_secid("1.600000", "浦发银行"))
+    stock_bar = Bar("600000", day, 10, 11, 9, 10.5, 1000)
+    benchmark_bar = Bar("000300", day, 100, 101, 99, 100.5, 2000)
+
+    monkeypatch.setattr(
+        AsslRepository,
+        "load_watchlist_members",
+        lambda self, opened, received: (member,) if received == version_id else (),
+    )
+    load_calls = []
+    monkeypatch.setattr(
+        AsslRepository,
+        "load_bars",
+        lambda self, opened, symbols, end_date, limit=180: load_calls.append(
+            (symbols, end_date, limit)
+        )
+        or {"600000": (stock_bar,), "000300": (benchmark_bar,)},
+    )
+
+    inputs = repository.list_market_regime_inputs(
+        "macd-v1.1", sessions=None, connection=connection
+    )
+
+    assert inputs == (
+        MarketRegimeInput(
+            prior_day,
+            ("600000",),
+            {"600000": (stock_bar,), "000300": (benchmark_bar,)},
+            "historical_reconstruction",
+        ),
+        MarketRegimeInput(
+            as_of_date=day,
+            universe_symbols=("600000",),
+            histories={"600000": (stock_bar,), "000300": (benchmark_bar,)},
+            sample_type="forward_shadow",
+        ),
+    )
+    assert len(load_calls) == 1
+    statement, params = connection.statements[0]
+    assert "watchlist_version_id" in statement
+    assert "execution_mode as sample_type" in statement.lower()
+    assert "source_timestamp" not in statement.lower()
+    assert params == ("macd-v1.1", None)
 
 
 def test_transaction_disables_prepared_statements(monkeypatch):
@@ -421,10 +490,19 @@ def test_start_run_returns_existing_id_after_unique_conflict():
     )
     connection = RecordingConnection([Result(None), Result({"id": existing_id})])
 
-    run_id = AsslRepository("unused").start_run(connection, key, universe_count=839)
+    run_id = AsslRepository("unused").start_run(
+        connection,
+        key,
+        universe_count=839,
+        execution_mode="historical_reconstruction",
+    )
 
     assert run_id == existing_id
-    assert "on conflict" in connection.statements[0][0].lower()
+    insert_sql = connection.statements[0][0].lower()
+    assert "on conflict" in insert_sql
+    assert "do update set execution_mode = excluded.execution_mode" in insert_sql
+    assert "screening_runs.status = 'failed'" in insert_sql
+    assert connection.statements[0][1][-1] == "historical_reconstruction"
     assert "select id" in connection.statements[1][0].lower()
 
 

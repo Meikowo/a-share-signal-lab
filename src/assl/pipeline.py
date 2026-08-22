@@ -48,6 +48,7 @@ class DailyPipeline:
         as_of_date: date | None = None,
         *,
         offline: bool = False,
+        execution_mode: str = "forward_shadow",
     ) -> RunSummary:
         latest_completed = self.latest_completed_date()
         if as_of_date is not None and as_of_date > latest_completed:
@@ -137,7 +138,10 @@ class DailyPipeline:
                 else:
                     reusable_run = None
                     run_id = self.repository.start_run(
-                        connection, key, universe_count=universe_count
+                        connection,
+                        key,
+                        universe_count=universe_count,
+                        execution_mode=execution_mode,
                     )
 
             if reusable_run is not None:

@@ -12,9 +12,10 @@ def test_run_daily_cli_parses_date_and_offline(monkeypatch, capsys):
         def __init__(self, repository, market, config):
             pass
 
-        def run(self, as_of_date, offline=False):
+        def run(self, as_of_date, offline=False, execution_mode="forward_shadow"):
             captured["date"] = as_of_date
             captured["offline"] = offline
+            captured["execution_mode"] = execution_mode
             return RunSummary(
                 run_id="run-1",
                 as_of_date=as_of_date,
@@ -33,7 +34,11 @@ def test_run_daily_cli_parses_date_and_offline(monkeypatch, capsys):
     )
 
     assert exit_code == 0
-    assert captured == {"date": date(2026, 8, 11), "offline": True}
+    assert captured == {
+        "date": date(2026, 8, 11),
+        "offline": True,
+        "execution_mode": "historical_reconstruction",
+    }
     assert "status=succeeded" in capsys.readouterr().out
 
 
@@ -59,8 +64,8 @@ def test_backfill_cli_runs_cached_sessions_oldest_first(monkeypatch, capsys):
         def latest_completed_date(self):
             return date(2026, 8, 14)
 
-        def run(self, as_of_date, offline=False):
-            called.append((as_of_date, offline))
+        def run(self, as_of_date, offline=False, execution_mode="forward_shadow"):
+            called.append((as_of_date, offline, execution_mode))
             return RunSummary(
                 run_id=f"run-{as_of_date}",
                 as_of_date=as_of_date,
@@ -77,5 +82,5 @@ def test_backfill_cli_runs_cached_sessions_oldest_first(monkeypatch, capsys):
     exit_code = cli_module.main(["backfill", "--sessions", "3"])
 
     assert exit_code == 0
-    assert called == [(day, True) for day in dates]
+    assert called == [(day, True, "historical_reconstruction") for day in dates]
     assert "completed=3/3" in capsys.readouterr().out

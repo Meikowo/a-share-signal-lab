@@ -65,3 +65,11 @@ def test_screening_run_stores_deterministic_result_hash():
     sql = migration_sql()
 
     assert "add column result_sha256 text" in sql
+
+
+def test_screening_run_persists_explicit_execution_mode():
+    sql = migration_sql()
+
+    assert "add column execution_mode text" in sql
+    assert "historical_reconstruction" in sql
+    assert "forward_shadow" in sql
